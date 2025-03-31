@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { Button } from './button';
 import { Input } from './input';
 import { Label } from './label';
-import { Alert } from './alert';
+import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -11,52 +10,69 @@ const supabase = createClient(
 );
 
 interface AuthSystemProps {
-  onAuthSuccess: () => void;
+  onSignIn: () => void;
 }
 
-const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
+const AuthSystem: React.FC<AuthSystemProps> = ({ onSignIn }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
+    setLoading(true);
+    setMessage('');
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) {
-          throw new Error(error.message);
-        }
-        setErrorMessage('Check your email for the confirmation link.');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) {
-          throw new Error(error.message);
-        }
-        onAuthSuccess();
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setMessage(error.message);
+        return;
       }
+
+      onSignIn();
     } catch (err) {
-      if (err instanceof Error) {
-        setErrorMessage(err.message);
-      } else {
-        setErrorMessage('An unexpected error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setMessage(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) {
+        setMessage(error.message);
+        return;
       }
+
+      setMessage('Success! Please check your email for verification.');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setMessage(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
-      <form onSubmit={handleAuth} className="space-y-4">
-        <div className="space-y-2">
+      <form className="space-y-4">
+        <div>
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
@@ -66,7 +82,7 @@ const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
             required
           />
         </div>
-        <div className="space-y-2">
+        <div>
           <Label htmlFor="password">Password</Label>
           <Input
             id="password"
@@ -76,20 +92,30 @@ const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
             required
           />
         </div>
-        {errorMessage && (
-          <Alert variant="destructive">{errorMessage}</Alert>
+        {message && (
+          <p className={`text-sm ${message.includes('Success') ? 'text-green-500' : 'text-red-500'}`}>
+            {message}
+          </p>
         )}
-        <Button type="submit" className="w-full">
-          {isSignUp ? 'Sign Up' : 'Sign In'}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full"
-          onClick={() => setIsSignUp(!isSignUp)}
-        >
-          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-        </Button>
+        <div className="flex gap-4">
+          <Button
+            type="submit"
+            onClick={handleSignIn}
+            disabled={loading}
+            className="flex-1"
+          >
+            Sign In
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSignUp}
+            disabled={loading}
+            variant="outline"
+            className="flex-1"
+          >
+            Sign Up
+          </Button>
+        </div>
       </form>
     </div>
   );

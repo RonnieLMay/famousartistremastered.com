@@ -1,57 +1,41 @@
 import { loadStripe } from '@stripe/stripe-js';
 
-interface PaymentGatewayProps {
-  amount: number;
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+
+interface PaymentResult {
+  success: boolean;
+  error?: string;
 }
 
-class PaymentGateway {
-  private static stripe: any;
-
-  private static async initStripe() {
-    if (!this.stripe) {
-      this.stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
-    }
-    return this.stripe;
-  }
-
-  static async processPayment(amount: number): Promise<boolean> {
+const PaymentGateway = {
+  async processPayment(amount: number): Promise<boolean> {
     try {
-      const stripe = await this.initStripe();
-      
+      const stripe = await stripePromise;
+      if (!stripe) throw new Error('Stripe failed to load');
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ amount: Math.round(amount * 100) }), // Convert to cents
+        body: JSON.stringify({ 
+          amount: Math.round(amount * 100) // Convert to cents
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error('Payment failed');
-      }
+      const { clientSecret, error } = await response.json();
+      if (error) throw new Error(error);
 
-      const { clientSecret } = await response.json();
-
-      const { error: stripeError } = await stripe.confirmPayment({
-        elements: null,
-        clientSecret,
-        confirmParams: {
-          return_url: window.location.href,
-        },
-      });
-
-      if (stripeError) {
-        console.error('Payment failed:', stripeError);
-        return false;
-      }
+      const { error: stripeError } = await stripe.confirmCardPayment(clientSecret);
+      if (stripeError) throw new Error(stripeError.message);
 
       return true;
-    } catch (error) {
-      console.error('Payment processing error:', error);
+    } catch (err) {
+      console.error('Payment failed:', err);
       return false;
     }
   }
-}
+};
 
 export default PaymentGateway;
