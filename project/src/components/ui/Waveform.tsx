@@ -10,6 +10,7 @@ const Waveform: React.FC<WaveformProps> = ({ audioUrl, isPlaying }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const animationFrameRef = useRef<number>();
 
   useEffect(() => {
     const setupAudio = async () => {
@@ -24,6 +25,7 @@ const Waveform: React.FC<WaveformProps> = ({ audioUrl, isPlaying }) => {
 
         if (sourceRef.current) {
           sourceRef.current.stop();
+          sourceRef.current.disconnect();
         }
 
         sourceRef.current = audioContextRef.current.createBufferSource();
@@ -49,7 +51,18 @@ const Waveform: React.FC<WaveformProps> = ({ audioUrl, isPlaying }) => {
 
     return () => {
       if (sourceRef.current) {
-        sourceRef.current.stop();
+        try {
+          sourceRef.current.stop();
+          sourceRef.current.disconnect();
+        } catch (error) {
+          console.error('Error cleaning up audio source:', error);
+        }
+      }
+      if (analyserRef.current) {
+        analyserRef.current.disconnect();
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
     };
   }, [audioUrl, isPlaying]);
@@ -67,7 +80,7 @@ const Waveform: React.FC<WaveformProps> = ({ audioUrl, isPlaying }) => {
     const draw = () => {
       if (!analyserRef.current) return;
 
-      requestAnimationFrame(draw);
+      animationFrameRef.current = requestAnimationFrame(draw);
       analyserRef.current.getByteTimeDomainData(dataArray);
 
       ctx.fillStyle = 'rgb(5, 8, 22)';

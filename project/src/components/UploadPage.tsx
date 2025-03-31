@@ -2,14 +2,12 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import Waveform from "@/components/ui/Waveform";
-import SocialShare from "@/components/ui/SocialShare";
+import { CheckCircle2, Download, Share2 } from "lucide-react";
 import PaymentGateway from "@/components/ui/PaymentGateway";
 import AudioControls from "@/components/ui/AudioControls";
-import { CheckCircle2, Download, Share2 } from "lucide-react";
+import SocialShare from "@/components/ui/SocialShare";
 
 interface UploadState {
   selectedFile: File | null;
@@ -92,8 +90,8 @@ const UploadPage: React.FC = () => {
         setState(prev => ({
           ...prev,
           message: "File processed successfully!",
-          processedFile: result.processed_url, // Use the full URL instead of just the path
-          previewUrl: result.preview_url // Use the full URL instead of just the path
+          processedFile: result.processed_url,
+          previewUrl: result.preview_url
         }));
       } else {
         setState(prev => ({
