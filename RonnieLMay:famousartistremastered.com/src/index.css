@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+  :root {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 1.2%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+    --ring: 216 34% 17%;
+    --neon-blue: 190 100% 50%;
+    --neon-purple: 280 100% 50%;
+  }
+}
+
+/* Futuristic Glassmorphism */
+.glass-panel {
+  background: rgba(31, 41, 55, 0.4);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 0 20px rgba(var(--neon-blue), 0.2),
+    inset 0 0 20px rgba(var(--neon-purple), 0.1);
+}
+
+/* 3D Transform Styles */
+.transform-3d {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.hover-3d {
+  transition: transform 0.3s ease;
+}
+
+.hover-3d:hover {
+  transform: translateY(-5px) rotateX(10deg);
+}
+
+/* Neon Effects */
+.neon-text {
+  text-shadow: 
+    0 0 10px rgba(var(--neon-blue), 0.7),
+    0 0 20px rgba(var(--neon-blue), 0.5),
+    0 0 30px rgba(var(--neon-blue), 0.3);
+}
+
+.neon-border {
+  border: 1px solid rgba(var(--neon-blue), 0.5);
+  box-shadow: 
+    0 0 10px rgba(var(--neon-blue), 0.3),
+    inset 0 0 10px rgba(var(--neon-blue), 0.3);
+}
+
+/* Animated Background */
+.cyber-grid {
+  background-image: 
+    linear-gradient(rgba(var(--neon-blue), 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--neon-blue), 0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 50px 50px;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--neon-blue), 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--neon-blue), 0.7);
+}
