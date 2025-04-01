@@ -6,6 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from "framer-motion";
 import { CheckCircle2, Download, Share2 } from "lucide-react";
 import PaymentGateway from "@/components/ui/PaymentGateway";
+import AudioControls from "@/components/ui/AudioControls";
+import SocialShare from "@/components/ui/SocialShare";
+import Waveform from "@/components/ui/Waveform";
 
 interface UploadState {
   selectedFile: File | null;
@@ -295,6 +298,9 @@ const UploadPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
+                  {state.previewUrl && <Waveform audioUrl={state.previewUrl} />}
+                  <AudioControls fileUrl={state.processedFile} />
+                  
                   {state.isPaid ? (
                     <motion.a
                       href={state.processedFile}
@@ -326,6 +332,7 @@ const UploadPage: React.FC = () => {
                     <Share2 className="w-4 h-4" />
                     <span className="text-sm">Share your mastered track</span>
                   </div>
+                  <SocialShare fileUrl={state.processedFile} />
                 </div>
               </div>
             </motion.div>

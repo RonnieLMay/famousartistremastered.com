@@ -1,54 +1,59 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Share2, Twitter, Facebook, Link as LinkIcon } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Button } from "@/components/ui/button";
+import { Twitter, Facebook, Link as LinkIcon } from "lucide-react";
+import { toast } from 'sonner';
 
 interface SocialShareProps {
   fileUrl: string;
 }
 
 const SocialShare: React.FC<SocialShareProps> = ({ fileUrl }) => {
-  const shareText = 'Check out my newly mastered track!';
+  const shareText = "Check out my mastered track!";
   const encodedText = encodeURIComponent(shareText);
   const encodedUrl = encodeURIComponent(fileUrl);
 
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(fileUrl);
-      // You could add a toast notification here
+      toast.success("Link copied to clipboard!");
     } catch (err) {
-      console.error('Failed to copy link:', err);
+      toast.error("Failed to copy link");
     }
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="mt-4">
-          <Share2 className="h-4 w-4 mr-2" />
-          Share
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`, '_blank')}>
-          <Twitter className="h-4 w-4 mr-2" />
-          Share on Twitter
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank')}>
-          <Facebook className="h-4 w-4 mr-2" />
-          Share on Facebook
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleCopyLink}>
-          <LinkIcon className="h-4 w-4 mr-2" />
-          Copy Link
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex gap-2">
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => window.open(
+          `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+          '_blank'
+        )}
+        className="hover:bg-blue-500/10"
+      >
+        <Twitter className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => window.open(
+          `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+          '_blank'
+        )}
+        className="hover:bg-blue-500/10"
+      >
+        <Facebook className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCopyLink}
+        className="hover:bg-blue-500/10"
+      >
+        <LinkIcon className="h-4 w-4" />
+      </Button>
+    </div>
   );
 };
 

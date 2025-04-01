@@ -1,137 +1,98 @@
-import React, { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { motion } from "framer-motion";
+import React, { useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { Button } from './button';
+import { Input } from './input';
+import { Label } from './label';
+import { toast } from 'sonner';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-interface AuthState {
-  email: string;
-  password: string;
-  isSignUp: boolean;
-  error: string;
-  loading: boolean;
-  showDialog: boolean;
+interface AuthSystemProps {
+  onAuthSuccess?: () => void;
 }
 
-const AuthSystem: React.FC = () => {
-  const [state, setState] = useState<AuthState>({
-    email: "",
-    password: "",
-    isSignUp: true,
-    error: "",
-    loading: false,
-    showDialog: false,
-  });
+const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setState(prev => ({ ...prev, loading: true, error: "" }));
+    setIsLoading(true);
 
     try {
-      if (state.isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email: state.email,
-          password: state.password,
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: state.email,
-          password: state.password,
-        });
-        if (error) throw error;
+      const { error } = isSignUp
+        ? await supabase.auth.signUp({
+            email,
+            password,
+          })
+        : await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+      if (error) {
+        throw error;
       }
 
-      setState(prev => ({ ...prev, showDialog: false }));
+      toast.success(isSignUp ? 'Account created successfully!' : 'Logged in successfully!');
+      onAuthSuccess?.();
     } catch (error) {
-      setState(prev => ({ ...prev, error: error.message }));
+      toast.error(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
-      setState(prev => ({ ...prev, loading: false }));
+      setIsLoading(false);
     }
   };
 
   return (
-    <>
-      <Button
-        onClick={() => setState(prev => ({ ...prev, showDialog: true }))}
-        className="absolute top-4 left-4 bg-blue-600 hover:bg-blue-500"
-      >
-        Sign In
-      </Button>
+    <div className="w-full max-w-md mx-auto space-y-6">
+      <form onSubmit={handleAuth} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="Enter your email"
+            className="w-full"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            placeholder="Enter your password"
+            className="w-full"
+          />
+        </div>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
+        </Button>
+      </form>
 
-      <Dialog open={state.showDialog} onOpenChange={(open) => setState(prev => ({ ...prev, showDialog: open }))}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{state.isSignUp ? "Create Account" : "Sign In"}</DialogTitle>
-          </DialogHeader>
-
-          <motion.form
-            onSubmit={handleAuth}
-            className="space-y-4 mt-4"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="grid w-full items-center gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={state.email}
-                onChange={(e) => setState(prev => ({ ...prev, email: e.target.value }))}
-                required
-              />
-            </div>
-
-            <div className="grid w-full items-center gap-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={state.password}
-                onChange={(e) => setState(prev => ({ ...prev, password: e.target.value }))}
-                required
-              />
-            </div>
-
-            {state.error && (
-              <p className="text-sm text-red-500">{state.error}</p>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={state.loading}
-            >
-              {state.loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Loading...
-                </div>
-              ) : state.isSignUp ? "Sign Up" : "Sign In"}
-            </Button>
-
-            <p className="text-sm text-center">
-              {state.isSignUp ? "Already have an account?" : "Need an account?"}{" "}
-              <button
-                type="button"
-                onClick={() => setState(prev => ({ ...prev, isSignUp: !prev.isSignUp }))}
-                className="text-blue-500 hover:text-blue-400"
-              >
-                {state.isSignUp ? "Sign In" : "Sign Up"}
-              </button>
-            </p>
-          </motion.form>
-        </DialogContent>
-      </Dialog>
-    </>
+      <div className="text-center">
+        <button
+          onClick={() => setIsSignUp(!isSignUp)}
+          className="text-sm text-blue-500 hover:text-blue-600"
+        >
+          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+        </button>
+      </div>
+    </div>
   );
 };
 

@@ -1,18 +1,17 @@
-import { loadStripe, Stripe } from '@stripe/stripe-js';
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+import { loadStripe } from '@stripe/stripe-js';
 
 interface PaymentGatewayInterface {
-  processPayment: (amount: number) => Promise<boolean>;
+  processPayment: (amount: number) => Promise<void>;
 }
 
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
 const PaymentGateway: PaymentGatewayInterface = {
-  processPayment: async (amount: number): Promise<boolean> => {
+  processPayment: async (amount: number) => {
     try {
-      const stripe: Stripe | null = await stripePromise;
-      
+      const stripe = await stripePromise;
       if (!stripe) {
-        throw new Error('Failed to initialize Stripe');
+        throw new Error('Stripe failed to initialize');
       }
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`, {
@@ -22,31 +21,30 @@ const PaymentGateway: PaymentGatewayInterface = {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          amount: Math.round(amount * 100), // Convert to cents and ensure integer
-          success_url: `${window.location.href}?payment=success`,
-          cancel_url: `${window.location.href}?payment=cancelled`,
+          amount: amount * 100, // Convert to cents
+          success_url: window.location.href,
+          cancel_url: window.location.href,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Payment failed');
+      const { sessionId, error } = await response.json();
+      
+      if (error) {
+        throw new Error(error);
       }
 
-      const { sessionId } = await response.json();
-      
-      const { error } = await stripe.redirectToCheckout({
+      const { error: stripeError } = await stripe.redirectToCheckout({
         sessionId,
       });
 
-      if (error) {
+      if (stripeError) {
+        throw new Error(stripeError.message);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
         throw error;
       }
-
-      return true;
-    } catch (error) {
-      console.error('Payment processing error:', error);
-      throw error;
+      throw new Error('Payment processing failed');
     }
   },
 };
