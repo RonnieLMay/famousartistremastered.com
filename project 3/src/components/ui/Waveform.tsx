@@ -2,113 +2,102 @@ import React, { useEffect, useRef } from 'react';
 
 interface WaveformProps {
   audioUrl: string;
-  onLoad?: () => void;
-  onError?: (error: Error) => void;
+  color?: string;
+  height?: number;
 }
 
-const Waveform: React.FC<WaveformProps> = ({ audioUrl, onLoad, onError }) => {
+const Waveform: React.FC<WaveformProps> = ({
+  audioUrl,
+  color = '#4F46E5',
+  height = 100
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const animationFrameRef = useRef<number>();
 
   useEffect(() => {
-    const setupAudio = async () => {
-      try {
-        if (!audioUrl) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-        const response = await fetch(audioUrl);
-        const arrayBuffer = await response.arrayBuffer();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-        }
-
-        const audioContext = audioContextRef.current;
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        analyserRef.current = audioContext.createAnalyser();
-        analyserRef.current.fftSize = 2048;
-
-        if (sourceRef.current) {
-          sourceRef.current.disconnect();
-        }
-
-        sourceRef.current = audioContext.createBufferSource();
-        sourceRef.current.buffer = audioBuffer;
-        sourceRef.current.connect(analyserRef.current);
-        analyserRef.current.connect(audioContext.destination);
-
-        drawWaveform();
-        onLoad?.();
-      } catch (err) {
-        console.error('Error loading audio:', err);
-        onError?.(err instanceof Error ? err : new Error('Failed to load audio'));
+    const cleanup = () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
-    };
-
-    setupAudio();
-
-    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
       if (sourceRef.current) {
         sourceRef.current.disconnect();
       }
       if (analyserRef.current) {
         analyserRef.current.disconnect();
       }
-    };
-  }, [audioUrl, onLoad, onError]);
-
-  const drawWaveform = () => {
-    if (!canvasRef.current || !analyserRef.current) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const analyser = analyserRef.current;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    const draw = () => {
-      requestAnimationFrame(draw);
-      analyser.getByteTimeDomainData(dataArray);
-
-      ctx.fillStyle = 'rgb(5, 8, 22)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgb(59, 130, 246)';
-      ctx.beginPath();
-
-      const sliceWidth = canvas.width / bufferLength;
-      let x = 0;
-
-      for (let i = 0; i < bufferLength; i++) {
-        const v = dataArray[i] / 128.0;
-        const y = (v * canvas.height) / 2;
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-
-        x += sliceWidth;
+      if (audioContextRef.current?.state !== 'closed') {
+        audioContextRef.current?.close();
       }
-
-      ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.stroke();
     };
 
-    draw();
-  };
+    try {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      audioRef.current = new Audio(audioUrl);
+      sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
+
+      sourceRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
+
+      analyserRef.current.fftSize = 256;
+      const bufferLength = analyserRef.current.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const draw = () => {
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        animationFrameRef.current = requestAnimationFrame(draw);
+
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        const barWidth = (WIDTH / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = (dataArray[i] / 255) * HEIGHT;
+
+          ctx.fillStyle = color;
+          ctx.fillRect(x, HEIGHT - barHeight, barWidth, barHeight);
+
+          x += barWidth + 1;
+        }
+      };
+
+      audioRef.current.play();
+      draw();
+    } catch (error) {
+      console.error('Error initializing audio visualization:', error);
+    }
+
+    return cleanup;
+  }, [audioUrl, color]);
 
   return (
     <canvas
       ref={canvasRef}
-      className="w-full h-24 rounded-lg bg-[#050816]"
       width={800}
-      height={100}
+      height={height}
+      className="w-full rounded-lg"
     />
   );
 };
