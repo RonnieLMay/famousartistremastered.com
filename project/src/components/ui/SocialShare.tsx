@@ -1,23 +1,41 @@
 import React from 'react';
-import { Button } from "@/components/ui/button";
-import { Twitter, Facebook, Link as LinkIcon } from "lucide-react";
-import { toast } from 'sonner';
+import { Button } from './button';
+import { Facebook, Twitter, Link as LinkIcon } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface SocialShareProps {
-  fileUrl: string;
+  fileUrl: string | null;
 }
 
 const SocialShare: React.FC<SocialShareProps> = ({ fileUrl }) => {
-  const shareText = "Check out my mastered track!";
-  const encodedText = encodeURIComponent(shareText);
-  const encodedUrl = encodeURIComponent(fileUrl);
+  const { toast } = useToast();
 
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(fileUrl);
-      toast.success("Link copied to clipboard!");
-    } catch (err) {
-      toast.error("Failed to copy link");
+  const handleShare = (platform: string) => {
+    if (!fileUrl) return;
+
+    const shareUrl = encodeURIComponent(fileUrl);
+    const text = encodeURIComponent('Check out my mastered track!');
+
+    let url = '';
+    switch (platform) {
+      case 'facebook':
+        url = `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`;
+        break;
+      case 'twitter':
+        url = `https://twitter.com/intent/tweet?url=${shareUrl}&text=${text}`;
+        break;
+      case 'copy':
+        navigator.clipboard.writeText(fileUrl).then(() => {
+          toast({
+            title: 'Link copied!',
+            description: 'The link has been copied to your clipboard.',
+          });
+        });
+        return;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'width=600,height=400');
     }
   };
 
@@ -26,30 +44,24 @@ const SocialShare: React.FC<SocialShareProps> = ({ fileUrl }) => {
       <Button
         variant="outline"
         size="icon"
-        onClick={() => window.open(
-          `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
-          '_blank'
-        )}
-        className="hover:bg-blue-500/10"
-      >
-        <Twitter className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => window.open(
-          `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-          '_blank'
-        )}
-        className="hover:bg-blue-500/10"
+        onClick={() => handleShare('facebook')}
+        disabled={!fileUrl}
       >
         <Facebook className="h-4 w-4" />
       </Button>
       <Button
         variant="outline"
         size="icon"
-        onClick={handleCopyLink}
-        className="hover:bg-blue-500/10"
+        onClick={() => handleShare('twitter')}
+        disabled={!fileUrl}
+      >
+        <Twitter className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => handleShare('copy')}
+        disabled={!fileUrl}
       >
         <LinkIcon className="h-4 w-4" />
       </Button>

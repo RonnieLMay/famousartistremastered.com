@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Music4 } from "lucide-react";
 
 const Navbar: React.FC = () => {
   return (
@@ -12,10 +13,12 @@ const Navbar: React.FC = () => {
     >
       <div className="bg-[#050816]/40 backdrop-blur-sm border-b border-blue-500/10">
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <Link to="/" className="text-2xl font-bold hover-3d neon-text">
-            FAR
+          <Link to="/" className="text-2xl font-bold hover-3d neon-text flex items-center gap-2">
+            <Music4 className="h-8 w-8" />
+            <span>FAR</span>
           </Link>
-          <div className="space-x-8">
+          
+          <div className="flex items-center space-x-8">
             <Link 
               to="/" 
               className="hover-3d inline-block text-gray-300 hover:text-blue-400 transition-colors"
@@ -35,4 +38,4 @@ const Navbar: React.FC = () => {
   );
 };
 
-export default Navbar;
+export default Navbar
