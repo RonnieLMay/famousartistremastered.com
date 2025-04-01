@@ -5,7 +5,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
 import { CheckCircle2, Download, Share2 } from "lucide-react";
-import PaymentGateway from "@/components/ui/PaymentGateway";
 import AudioControls from "@/components/ui/AudioControls";
 import SocialShare from "@/components/ui/SocialShare";
 import Waveform from "@/components/ui/Waveform";
@@ -19,7 +18,6 @@ interface UploadState {
   previewUrl: string | null;
   preset: string;
   darkMode: boolean;
-  isPaid: boolean;
 }
 
 interface MasteringPreset {
@@ -55,8 +53,7 @@ const UploadPage: React.FC = () => {
     processedFile: null,
     previewUrl: null,
     preset: "studio-warmth",
-    darkMode: true,
-    isPaid: false
+    darkMode: true
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,19 +110,6 @@ const UploadPage: React.FC = () => {
       }));
     } finally {
       setState(prev => ({ ...prev, uploading: false }));
-    }
-  };
-
-  const handlePayment = async () => {
-    try {
-      await PaymentGateway.processPayment(1.99);
-      setState(prev => ({ ...prev, isPaid: true }));
-    } catch (error) {
-      console.error('Payment failed:', error);
-      setState(prev => ({
-        ...prev,
-        message: error instanceof Error ? error.message : "Payment failed. Please try again."
-      }));
     }
   };
 
@@ -301,30 +285,18 @@ const UploadPage: React.FC = () => {
                   {state.previewUrl && <Waveform audioUrl={state.previewUrl} />}
                   <AudioControls fileUrl={state.processedFile} />
                   
-                  {state.isPaid ? (
-                    <motion.a
-                      href={state.processedFile}
-                      className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl 
-                        bg-gradient-to-r from-green-500 to-blue-500 text-white 
-                        hover:from-green-600 hover:to-blue-600 transition-all duration-300 
-                        hover-3d neon-border"
-                      download
-                      whileHover={{ scale: 1.02 }}
-                    >
-                      <Download className="w-5 h-5" />
-                      Download Mastered Track
-                    </motion.a>
-                  ) : (
-                    <Button
-                      onClick={handlePayment}
-                      className="w-full hover-3d bg-gradient-to-r from-yellow-500 to-orange-500 
-                        hover:from-yellow-600 hover:to-orange-600 text-white shadow-lg neon-border
-                        flex items-center justify-center gap-2"
-                    >
-                      <Download className="w-5 h-5" />
-                      Pay $1.99 to Download
-                    </Button>
-                  )}
+                  <motion.a
+                    href={state.processedFile}
+                    className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl 
+                      bg-gradient-to-r from-green-500 to-blue-500 text-white 
+                      hover:from-green-600 hover:to-blue-600 transition-all duration-300 
+                      hover-3d neon-border"
+                    download
+                    whileHover={{ scale: 1.02 }}
+                  >
+                    <Download className="w-5 h-5" />
+                    Download Mastered Track
+                  </motion.a>
                 </div>
 
                 <div className="pt-4 border-t border-white/10">
