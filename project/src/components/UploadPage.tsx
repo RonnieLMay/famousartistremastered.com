@@ -2,14 +2,13 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import Waveform from "@/components/ui/Waveform";
-import SocialShare from "@/components/ui/SocialShare";
+import { CheckCircle2, Download, Share2 } from "lucide-react";
 import PaymentGateway from "@/components/ui/PaymentGateway";
 import AudioControls from "@/components/ui/AudioControls";
-import { CheckCircle2, Download, Share2 } from "lucide-react";
+import SocialShare from "@/components/ui/SocialShare";
+import Waveform from "@/components/ui/Waveform";
 
 interface UploadState {
   selectedFile: File | null;
@@ -23,7 +22,13 @@ interface UploadState {
   isPaid: boolean;
 }
 
-const masteringPresets = [
+interface MasteringPreset {
+  value: string;
+  label: string;
+  description: string;
+}
+
+const masteringPresets: MasteringPreset[] = [
   { value: "studio-warmth", label: "Studio Warmth", description: "Classic analog warmth with subtle harmonics" },
   { value: "edm-boost", label: "EDM Boost", description: "Punchy bass and crisp highs for electronic music" },
   { value: "vintage-vinyl", label: "Vintage Vinyl", description: "Authentic vinyl character and warmth" },
@@ -92,8 +97,8 @@ const UploadPage: React.FC = () => {
         setState(prev => ({
           ...prev,
           message: "File processed successfully!",
-          processedFile: result.processed_url, // Use the full URL instead of just the path
-          previewUrl: result.preview_url // Use the full URL instead of just the path
+          processedFile: result.processed_url,
+          previewUrl: result.preview_url
         }));
       } else {
         setState(prev => ({
@@ -113,12 +118,14 @@ const UploadPage: React.FC = () => {
 
   const handlePayment = async () => {
     try {
-      const success = await PaymentGateway.processPayment(1.99);
-      if (success) {
-        setState(prev => ({ ...prev, isPaid: true }));
-      }
+      await PaymentGateway.processPayment(1.99);
+      setState(prev => ({ ...prev, isPaid: true }));
     } catch (error) {
       console.error('Payment failed:', error);
+      setState(prev => ({
+        ...prev,
+        message: error instanceof Error ? error.message : "Payment failed. Please try again."
+      }));
     }
   };
 
@@ -291,6 +298,7 @@ const UploadPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
+                  {state.previewUrl && <Waveform audioUrl={state.previewUrl} />}
                   <AudioControls fileUrl={state.processedFile} />
                   
                   {state.isPaid ? (
