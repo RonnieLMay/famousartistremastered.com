@@ -1,98 +1,76 @@
-import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Button } from './button';
-import { Input } from './input';
-import { Label } from './label';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createClient, User } from '@supabase/supabase-js';
+import SignIn from './SignIn';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
-interface AuthSystemProps {
-  onAuthSuccess?: () => void;
+interface AuthContextType {
+  user: User | null;
+  signOut: () => Promise<void>;
 }
 
-const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  signOut: async () => {},
+});
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || '',
+  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+);
+
+const AuthSystem: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signOut = async () => {
     try {
-      const { error } = isSignUp
-        ? await supabase.auth.signUp({
-            email,
-            password,
-          })
-        : await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-
-      if (error) {
-        throw error;
-      }
-
-      toast.success(isSignUp ? 'Account created successfully!' : 'Logged in successfully!');
-      onAuthSuccess?.();
+      await supabase.auth.signOut();
+      setUser(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Authentication failed');
-    } finally {
-      setIsLoading(false);
+      console.error('Error signing out:', error);
     }
   };
 
-  return (
-    <div className="w-full max-w-md mx-auto space-y-6">
-      <form onSubmit={handleAuth} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="Enter your email"
-            className="w-full"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            placeholder="Enter your password"
-            className="w-full"
-          />
-        </div>
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
-        </Button>
-      </form>
-
-      <div className="text-center">
-        <button
-          onClick={() => setIsSignUp(!isSignUp)}
-          className="text-sm text-blue-500 hover:text-blue-600"
-        >
-          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-        </button>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
-    </div>
+    );
+  }
+
+  if (!user) {
+    return <SignIn />;
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, signOut }}>
+      {children}
+    </AuthContext.Provider>
   );
 };
 

@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { Wand2, Zap, Diamond } from "lucide-react";
 
 const LandingPage: React.FC = () => {
   return (
@@ -67,8 +68,8 @@ const LandingPage: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.4 }}
           >
-            AI-powered mastering that brings your music to life with a professional, polished sound.
-            Free to use - no credit card required.
+            Transform your music with AI-powered mastering. Professional-grade sound enhancement
+            that brings your tracks to life. Free to use - no credit card required.
           </motion.p>
 
           <motion.div 
@@ -78,8 +79,8 @@ const LandingPage: React.FC = () => {
             transition={{ duration: 0.5, delay: 0.6 }}
           >
             <Link to="/upload">
-              <Button className="hover-3d px-8 py-4 text-lg rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white shadow-lg neon-border">
-                Get Started
+              <Button className="hover-3d px-8 py-6 text-lg rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white shadow-lg neon-border">
+                Start Mastering Now
               </Button>
             </Link>
           </motion.div>
@@ -95,17 +96,17 @@ const LandingPage: React.FC = () => {
               {
                 title: "AI Mastering",
                 description: "Professional-grade mastering powered by advanced AI",
-                icon: "🤖"
+                icon: Wand2
               },
               {
                 title: "Instant Results",
                 description: "Get your mastered track in minutes, not hours",
-                icon: "⚡"
+                icon: Zap
               },
               {
                 title: "Free Forever",
                 description: "Professional quality mastering at no cost",
-                icon: "💎"
+                icon: Diamond
               }
             ].map((feature, index) => (
               <motion.div
@@ -114,7 +115,7 @@ const LandingPage: React.FC = () => {
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.2 }}
               >
-                <div className="text-4xl mb-4">{feature.icon}</div>
+                <feature.icon className="w-12 h-12 mb-4 text-blue-400" />
                 <h3 className="text-xl font-semibold mb-2 text-blue-400">{feature.title}</h3>
                 <p className="text-gray-400">{feature.description}</p>
               </motion.div>
