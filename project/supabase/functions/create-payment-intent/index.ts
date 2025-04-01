@@ -13,18 +13,19 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { amount } = await req.json();
 
-    if (!amount) {
-      throw new Error('Amount is required');
+    if (!amount || amount <= 0) {
+      throw new Error('Invalid amount');
     }
 
+    // Create a PaymentIntent with the specified amount
     const paymentIntent = await stripe.paymentIntents.create({
-      amount,
+      amount: Math.round(amount), // amount should already be in cents
       currency: 'usd',
       automatic_payment_methods: {
         enabled: true,
@@ -32,7 +33,10 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ clientSecret: paymentIntent.client_secret }),
+      JSON.stringify({ 
+        clientSecret: paymentIntent.client_secret,
+        id: paymentIntent.id 
+      }),
       {
         headers: {
           ...corsHeaders,
@@ -41,8 +45,12 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    console.error('Payment intent creation error:', error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Failed to create payment intent' 
+      }),
       {
         status: 400,
         headers: {

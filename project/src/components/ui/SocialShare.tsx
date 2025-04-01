@@ -1,53 +1,54 @@
 import React from 'react';
-import { Twitter, Facebook, Linkedin } from 'lucide-react';
-import { Button } from './button';
+import { Button } from '@/components/ui/button';
+import { Share2, Twitter, Facebook, Link as LinkIcon } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface SocialShareProps {
   fileUrl: string;
 }
 
 const SocialShare: React.FC<SocialShareProps> = ({ fileUrl }) => {
-  const shareText = "Check out my mastered track!";
-  const encodedUrl = encodeURIComponent(fileUrl);
+  const shareText = 'Check out my newly mastered track!';
   const encodedText = encodeURIComponent(shareText);
+  const encodedUrl = encodeURIComponent(fileUrl);
 
-  const shareLinks = {
-    twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`
-  };
-
-  const handleShare = (platform: keyof typeof shareLinks) => {
-    window.open(shareLinks[platform], '_blank', 'width=600,height=400');
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(fileUrl);
+      // You could add a toast notification here
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
   };
 
   return (
-    <div className="flex gap-2">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => handleShare('twitter')}
-        className="hover:bg-blue-500/20"
-      >
-        <Twitter className="h-5 w-5 text-blue-400" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => handleShare('facebook')}
-        className="hover:bg-blue-500/20"
-      >
-        <Facebook className="h-5 w-5 text-blue-400" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => handleShare('linkedin')}
-        className="hover:bg-blue-500/20"
-      >
-        <Linkedin className="h-5 w-5 text-blue-400" />
-      </Button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="mt-4">
+          <Share2 className="h-4 w-4 mr-2" />
+          Share
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`, '_blank')}>
+          <Twitter className="h-4 w-4 mr-2" />
+          Share on Twitter
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank')}>
+          <Facebook className="h-4 w-4 mr-2" />
+          Share on Facebook
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleCopyLink}>
+          <LinkIcon className="h-4 w-4 mr-2" />
+          Copy Link
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 
