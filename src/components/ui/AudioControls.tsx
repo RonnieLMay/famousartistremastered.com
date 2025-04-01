@@ -1,142 +1,114 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, RefreshCw } from 'lucide-react';
-import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
+import React, { useRef, useEffect, useState } from "react";
+import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { Button } from "./button";
+import { Slider } from "./slider";
 
 interface AudioControlsProps {
   fileUrl: string;
+  onPlaybackChange: (isPlaying: boolean) => void;
+  onTimeUpdate: (currentTime: number) => void;
+  onDurationChange: (duration: number) => void;
 }
 
-const AudioControls: React.FC<AudioControlsProps> = ({ fileUrl }) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+const AudioControls: React.FC<AudioControlsProps> = ({
+  fileUrl,
+  onPlaybackChange,
+  onTimeUpdate,
+  onDurationChange,
+}) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const audio = new Audio();
-    audioRef.current = audio;
-
-    audio.preload = 'metadata';
-
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
-      setIsLoading(false);
-      setError(null);
-    };
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-    };
-
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-    };
-
-    const handleError = () => {
-      let errorMessage = 'Failed to load audio.';
-      
-      if (audio.error) {
-        switch (audio.error.code) {
-          case MediaError.MEDIA_ERR_ABORTED:
-            errorMessage = 'Audio playback was aborted.';
-            break;
-          case MediaError.MEDIA_ERR_NETWORK:
-            errorMessage = 'A network error occurred while loading the audio.';
-            break;
-          case MediaError.MEDIA_ERR_DECODE:
-            errorMessage = 'The audio format is not supported by your browser.';
-            break;
-          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMessage = 'The audio format or source is not supported.';
-            break;
-        }
-      }
-      
-      setError(errorMessage);
-      setIsLoading(false);
-      setIsPlaying(false);
-    };
-
-    const handleCanPlay = () => {
-      setIsLoading(false);
-      setError(null);
-    };
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('canplay', handleCanPlay);
-
-    audio.volume = volume;
-
-    // Add cache-busting parameter and set source
-    const url = new URL(fileUrl);
-    url.searchParams.append('t', Date.now().toString());
-    audio.src = url.toString();
+    if (audioRef.current) {
+      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+      audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+      audioRef.current.addEventListener('ended', handleEnded);
+      audioRef.current.addEventListener('canplaythrough', handleCanPlayThrough);
+    }
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.pause();
-      audio.src = '';
-      audioRef.current = null;
-    };
-  }, [fileUrl]);
-
-  const togglePlay = async () => {
-    if (!audioRef.current || isLoading) return;
-
-    try {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        await audioRef.current.play();
-        setIsPlaying(true);
+      if (audioRef.current) {
+        audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
+        audioRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audioRef.current.removeEventListener('ended', handleEnded);
+        audioRef.current.removeEventListener('canplaythrough', handleCanPlayThrough);
       }
-      setError(null);
-    } catch (err) {
-      console.error('Playback error:', err);
-      setIsPlaying(false);
-      setError('Failed to play audio. Please try again.');
+    };
+  }, []);
+
+  const handleCanPlayThrough = () => {
+    setIsLoaded(true);
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      const time = audioRef.current.currentTime;
+      setCurrentTime(time);
+      onTimeUpdate(time);
     }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      const audioDuration = audioRef.current.duration;
+      setDuration(audioDuration);
+      onDurationChange(audioDuration);
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    onPlaybackChange(false);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+    }
+  };
+
+  const togglePlayPause = () => {
+    if (!isLoaded || !audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(error => {
+        console.error("Playback failed:", error);
+        setIsPlaying(false);
+        onPlaybackChange(false);
+      });
+    }
+    setIsPlaying(!isPlaying);
+    onPlaybackChange(!isPlaying);
   };
 
   const handleSeek = (value: number[]) => {
-    if (!audioRef.current || isLoading) return;
+    if (!isLoaded || !audioRef.current) return;
+
     const newTime = value[0];
     audioRef.current.currentTime = newTime;
     setCurrentTime(newTime);
+    onTimeUpdate(newTime);
   };
 
-  const handleVolumeChange = (value: number[]) => {
-    if (!audioRef.current) return;
-    const newVolume = value[0];
-    audioRef.current.volume = newVolume;
-    setVolume(newVolume);
-    setIsMuted(newVolume === 0);
+  const handleSkipBack = () => {
+    if (!isLoaded || !audioRef.current) return;
+
+    const newTime = Math.max(0, currentTime - 10);
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    onTimeUpdate(newTime);
   };
 
-  const toggleMute = () => {
-    if (!audioRef.current) return;
-    const newMuted = !isMuted;
-    audioRef.current.volume = newMuted ? 0 : volume || 1;
-    setIsMuted(newMuted);
-    if (!newMuted && volume === 0) {
-      const newVolume = 1;
-      setVolume(newVolume);
-      audioRef.current.volume = newVolume;
-    }
+  const handleSkipForward = () => {
+    if (!isLoaded || !audioRef.current) return;
+
+    const newTime = Math.min(duration, currentTime + 10);
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    onTimeUpdate(newTime);
   };
 
   const formatTime = (time: number) => {
@@ -145,103 +117,66 @@ const AudioControls: React.FC<AudioControlsProps> = ({ fileUrl }) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const retryLoad = () => {
-    if (!audioRef.current) return;
-    
-    const url = new URL(fileUrl);
-    url.searchParams.append('t', Date.now().toString());
-    audioRef.current.src = url.toString();
-    audioRef.current.load();
-    setIsLoading(true);
-    setError(null);
-  };
-
-  if (error) {
-    return (
-      <div className="w-full p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-        <p className="text-red-400 text-sm mb-2">{error}</p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={retryLoad}
-          className="text-blue-400 hover:text-blue-300 flex items-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="w-full p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
-        <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400"></div>
-          <span className="ml-2 text-blue-400 text-sm">Loading audio...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full space-y-4">
-      <div className="flex items-center gap-4">
+    <div className="flex flex-col gap-2">
+      <audio 
+        ref={audioRef} 
+        src={fileUrl} 
+        preload="metadata"
+        autoPlay={false}
+      />
+      
+      <div className="flex items-center justify-center gap-2">
         <Button
           variant="ghost"
           size="icon"
-          onClick={togglePlay}
-          disabled={isLoading}
-          className="h-8 w-8 text-white hover:text-blue-400 disabled:opacity-50"
+          onClick={handleSkipBack}
+          disabled={!isLoaded}
+          className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <SkipBack className="h-6 w-6" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={togglePlayPause}
+          disabled={!isLoaded}
+          className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
         >
           {isPlaying ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-6 w-6" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="h-6 w-6" />
           )}
         </Button>
 
-        <div className="flex-1">
-          <Slider
-            value={[currentTime]}
-            min={0}
-            max={duration || 100}
-            step={0.1}
-            onValueChange={handleSeek}
-            disabled={isLoading}
-            className="w-full"
-          />
-        </div>
-
-        <div className="text-sm text-gray-400 w-20 text-right">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleSkipForward}
+          disabled={!isLoaded}
+          className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <SkipForward className="h-6 w-6" />
+        </Button>
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleMute}
-          disabled={isLoading}
-          className="h-8 w-8 text-white hover:text-blue-400 disabled:opacity-50"
-        >
-          {isMuted ? (
-            <VolumeX className="h-4 w-4" />
-          ) : (
-            <Volume2 className="h-4 w-4" />
-          )}
-        </Button>
-
+        <span className="text-sm text-gray-400 min-w-[40px]">
+          {formatTime(currentTime)}
+        </span>
         <Slider
-          value={[isMuted ? 0 : volume]}
-          min={0}
-          max={1}
-          step={0.01}
-          onValueChange={handleVolumeChange}
-          disabled={isLoading}
-          className="w-24"
+          value={[currentTime]}
+          max={duration}
+          step={0.1}
+          onValueChange={handleSeek}
+          disabled={!isLoaded}
+          className="flex-1"
         />
+        <span className="text-sm text-gray-400 min-w-[40px]">
+          {formatTime(duration)}
+        </span>
       </div>
     </div>
   );
