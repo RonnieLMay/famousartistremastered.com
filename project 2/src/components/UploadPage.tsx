@@ -6,8 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from "framer-motion";
 import { CheckCircle2, Download, Share2 } from "lucide-react";
 import PaymentGateway from "@/components/ui/PaymentGateway";
-import AudioControls from "@/components/ui/AudioControls";
-import SocialShare from "@/components/ui/SocialShare";
 
 interface UploadState {
   selectedFile: File | null;
@@ -21,7 +19,13 @@ interface UploadState {
   isPaid: boolean;
 }
 
-const masteringPresets = [
+interface MasteringPreset {
+  value: string;
+  label: string;
+  description: string;
+}
+
+const masteringPresets: MasteringPreset[] = [
   { value: "studio-warmth", label: "Studio Warmth", description: "Classic analog warmth with subtle harmonics" },
   { value: "edm-boost", label: "EDM Boost", description: "Punchy bass and crisp highs for electronic music" },
   { value: "vintage-vinyl", label: "Vintage Vinyl", description: "Authentic vinyl character and warmth" },
@@ -111,12 +115,14 @@ const UploadPage: React.FC = () => {
 
   const handlePayment = async () => {
     try {
-      const success = await PaymentGateway.processPayment(1.99);
-      if (success) {
-        setState(prev => ({ ...prev, isPaid: true }));
-      }
+      await PaymentGateway.processPayment(1.99);
+      setState(prev => ({ ...prev, isPaid: true }));
     } catch (error) {
       console.error('Payment failed:', error);
+      setState(prev => ({
+        ...prev,
+        message: error instanceof Error ? error.message : "Payment failed. Please try again."
+      }));
     }
   };
 
@@ -289,8 +295,6 @@ const UploadPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <AudioControls fileUrl={state.processedFile} />
-                  
                   {state.isPaid ? (
                     <motion.a
                       href={state.processedFile}
@@ -322,7 +326,6 @@ const UploadPage: React.FC = () => {
                     <Share2 className="w-4 h-4" />
                     <span className="text-sm">Share your mastered track</span>
                   </div>
-                  <SocialShare fileUrl={state.processedFile} />
                 </div>
               </div>
             </motion.div>

@@ -1,44 +1,54 @@
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe, Stripe } from '@stripe/stripe-js';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
-interface PaymentResponse {
-  clientSecret: string;
+interface PaymentGatewayInterface {
+  processPayment: (amount: number) => Promise<boolean>;
 }
 
-class PaymentGateway {
-  static async processPayment(amount: number): Promise<boolean> {
+const PaymentGateway: PaymentGatewayInterface = {
+  processPayment: async (amount: number): Promise<boolean> => {
     try {
-      const stripe = await stripePromise;
+      const stripe: Stripe | null = await stripePromise;
+      
       if (!stripe) {
-        throw new Error('Stripe failed to initialize');
+        throw new Error('Failed to initialize Stripe');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          amount: Math.round(amount * 100), // Convert to cents
+          amount: Math.round(amount * 100), // Convert to cents and ensure integer
+          success_url: `${window.location.href}?payment=success`,
+          cancel_url: `${window.location.href}?payment=cancelled`,
         }),
       });
 
-      const data = await response.json() as PaymentResponse;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Payment failed');
+      }
 
-      const { error: paymentError } = await stripe.confirmCardPayment(data.clientSecret);
+      const { sessionId } = await response.json();
+      
+      const { error } = await stripe.redirectToCheckout({
+        sessionId,
+      });
 
-      if (paymentError) {
-        throw new Error(paymentError.message);
+      if (error) {
+        throw error;
       }
 
       return true;
     } catch (error) {
-      console.error('Payment failed:', error);
-      return false;
+      console.error('Payment processing error:', error);
+      throw error;
     }
-  }
-}
+  },
+};
 
 export default PaymentGateway;

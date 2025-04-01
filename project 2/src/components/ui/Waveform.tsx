@@ -1,134 +1,140 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 
 interface WaveformProps {
-  audioUrl: string;
-  onPlayPause?: (isPlaying: boolean) => void;
+  fileUrl: string;
 }
 
-interface AudioContext extends BaseAudioContext {
-  state: string;
-  resume(): Promise<void>;
-}
-
-const Waveform: React.FC<WaveformProps> = ({ audioUrl, onPlayPause }) => {
+const Waveform: React.FC<WaveformProps> = ({ fileUrl }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const animationFrameRef = useRef<number>(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const setupAudio = async () => {
-      try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        audioContextRef.current = new AudioContext();
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 2048;
-
-        const response = await fetch(audioUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-
-        sourceNodeRef.current = audioContextRef.current.createBufferSource();
-        sourceNodeRef.current.buffer = audioBuffer;
-        sourceNodeRef.current.connect(analyserRef.current);
-        analyserRef.current.connect(audioContextRef.current.destination);
-      } catch (error) {
-        console.error('Error setting up audio:', error);
-      }
-    };
-
-    setupAudio();
-
-    return () => {
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current.disconnect();
-      }
-      if (analyserRef.current) {
-        analyserRef.current.disconnect();
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [audioUrl]);
-
-  const drawWaveform = () => {
-    if (!canvasRef.current || !analyserRef.current) return;
-
     const canvas = canvasRef.current;
+    if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bufferLength = analyserRef.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyserRef.current.getByteTimeDomainData(dataArray);
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    let source: AudioBufferSourceNode | null = null;
+    let analyser: AnalyserNode | null = null;
 
-    ctx.fillStyle = 'rgb(20, 20, 20)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgb(0, 255, 0)';
-    ctx.beginPath();
+    const drawWaveform = (audioBuffer: AudioBuffer) => {
+      const width = canvas.width;
+      const height = canvas.height;
+      const channelData = audioBuffer.getChannelData(0);
+      const step = Math.ceil(channelData.length / width);
+      const amp = height / 2;
 
-    const sliceWidth = (canvas.width * 1.0) / bufferLength;
-    let x = 0;
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, width, height);
 
-    for (let i = 0; i < bufferLength; i++) {
-      const v = dataArray[i] / 128.0;
-      const y = (v * canvas.height) / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.strokeStyle = '#4a9eff';
+      ctx.lineWidth = 2;
 
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+      for (let i = 0; i < width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        for (let j = 0; j < step; j++) {
+          const datum = channelData[(i * step) + j];
+          if (datum < min) min = datum;
+          if (datum > max) max = datum;
+        }
+        ctx.lineTo(i, (1 + min) * amp);
       }
 
-      x += sliceWidth;
-    }
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
 
-    ctx.lineTo(canvas.width, canvas.height / 2);
-    ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
 
-    animationFrameRef.current = requestAnimationFrame(drawWaveform);
-  };
+      for (let i = 0; i < width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        for (let j = 0; j < step; j++) {
+          const datum = channelData[(i * step) + j];
+          if (datum < min) min = datum;
+          if (datum > max) max = datum;
+        }
+        ctx.lineTo(i, (1 + max) * amp);
+      }
 
-  const togglePlayPause = async () => {
-    if (!audioContextRef.current || !sourceNodeRef.current) return;
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+    };
 
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
+    const loadAndDraw = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
 
-    if (!isPlaying) {
-      sourceNodeRef.current.start();
-      drawWaveform();
-    } else {
-      sourceNodeRef.current.stop();
-      cancelAnimationFrame(animationFrameRef.current);
-    }
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error('Failed to load audio file');
+        }
 
-    setIsPlaying(!isPlaying);
-    onPlayPause?.(!isPlaying);
-  };
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        drawWaveform(audioBuffer);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Error processing audio:', err);
+        setError('Unable to display waveform visualization');
+        setIsLoading(false);
+      }
+    };
+
+    loadAndDraw();
+
+    return () => {
+      if (source) {
+        source.stop();
+        source.disconnect();
+      }
+      if (analyser) {
+        analyser.disconnect();
+      }
+      audioContext.close();
+    };
+  }, [fileUrl]);
+
+  if (error) {
+    return (
+      <motion.div
+        className="w-full h-[200px] rounded-lg bg-gray-900 flex items-center justify-center text-red-400"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        {error}
+      </motion.div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <motion.div
+        className="w-full h-[200px] rounded-lg bg-gray-900 flex items-center justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </motion.div>
+    );
+  }
 
   return (
-    <div className="relative w-full h-40">
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full"
-        onClick={togglePlayPause}
-        style={{ cursor: 'pointer' }}
-      />
-      <button
-        className="absolute bottom-4 right-4 bg-blue-500 text-white px-4 py-2 rounded"
-        onClick={togglePlayPause}
-      >
-        {isPlaying ? 'Pause' : 'Play'}
-      </button>
-    </div>
+    <canvas
+      ref={canvasRef}
+      width={800}
+      height={200}
+      className="w-full rounded-lg bg-gray-900"
+    />
   );
 };
 
