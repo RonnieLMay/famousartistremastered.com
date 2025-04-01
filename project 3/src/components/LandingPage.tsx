@@ -69,7 +69,7 @@ const LandingPage: React.FC = () => {
             transition={{ duration: 1, delay: 0.4 }}
           >
             Transform your music with AI-powered mastering. Professional-grade sound enhancement
-            that brings your tracks to life. Free to use - no credit card required.
+            that brings your tracks to life. Only $1.99 to download your mastered track.
           </motion.p>
 
           <motion.div 
@@ -104,8 +104,8 @@ const LandingPage: React.FC = () => {
                 icon: Zap
               },
               {
-                title: "Free Forever",
-                description: "Professional quality mastering at no cost",
+                title: "Affordable",
+                description: "Professional quality mastering for just $1.99",
                 icon: Diamond
               }
             ].map((feature, index) => (

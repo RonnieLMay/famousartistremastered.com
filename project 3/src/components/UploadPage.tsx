@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import MasterPage from "./MasterPage";
 import { useAuth } from "@/components/ui/AuthSystem";
+import { supabase } from "@/lib/supabase";
 
 interface UploadState {
   selectedFile: File | null;
@@ -78,44 +79,59 @@ const UploadPage: React.FC = () => {
       return;
     }
 
-    setState(prev => ({ ...prev, uploading: true }));
-    const formData = new FormData();
-    formData.append("file", state.selectedFile);
-    formData.append("preset", state.preset);
+    setState(prev => ({ ...prev, uploading: true, progress: 0 }));
 
     try {
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Authentication required");
+      }
+
+      const formData = new FormData();
+      formData.append("file", state.selectedFile);
+      formData.append("preset", state.preset);
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload`, {
         method: "POST",
         body: formData,
         headers: {
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${session.access_token}`,
         },
       });
 
-      const result = await response.json();
-      if (response.ok) {
-        setState(prev => ({
-          ...prev,
-          message: "File processed successfully!",
-          processedFile: result.processed_url,
-          previewUrl: result.preview_url
-        }));
-        toast.success("Track mastered successfully!");
-      } else {
-        throw new Error(result.error || "Upload failed");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
       }
+
+      const result = await response.json();
+      
+      if (!result.processed_url || !result.preview_url) {
+        throw new Error("Invalid response from server");
+      }
+
+      setState(prev => ({
+        ...prev,
+        message: "File processed successfully!",
+        processedFile: result.processed_url,
+        previewUrl: result.preview_url,
+        progress: 100
+      }));
+
+      toast.success("Track mastered successfully!");
     } catch (error) {
+      console.error("Upload error:", error);
       toast.error(error instanceof Error ? error.message : "Error processing track");
       setState(prev => ({
         ...prev,
-        message: "Error uploading file. Please try again."
+        message: "Error uploading file. Please try again.",
+        progress: 0
       }));
     } finally {
       setState(prev => ({ ...prev, uploading: false }));
     }
   };
-
-  const selectedPreset = masteringPresets.find(preset => preset.value === state.preset);
 
   return (
     <div className="relative min-h-screen bg-[#050816] cyber-grid overflow-hidden flex flex-col justify-center items-center p-6">

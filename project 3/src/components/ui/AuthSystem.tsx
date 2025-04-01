@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { createClient, User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import SignIn from './SignIn';
 
 interface AuthContextType {
@@ -12,20 +13,13 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
+interface AuthSystemProps {
+  children: React.ReactNode;
+}
 
-const AuthSystem: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AuthSystem: React.FC<AuthSystemProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -49,7 +43,6 @@ const AuthSystem: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
-      setUser(null);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -57,7 +50,7 @@ const AuthSystem: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
     );
