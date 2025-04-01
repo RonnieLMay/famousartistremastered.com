@@ -1,44 +1,41 @@
-import * as React from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import React from 'react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 interface ChartProps {
-  data: Array<Record<string, number | string>>;
-  width?: number | string;
-  height?: number | string;
-  margin?: {
-    top?: number;
-    right?: number;
-    bottom?: number;
-    left?: number;
-  };
-  xDataKey: string;
-  yDataKey: string;
-  stroke?: string;
+  data: Array<{
+    name: string;
+    value: number;
+  }>;
+  height?: number;
 }
 
-const Chart: React.FC<ChartProps> = ({
-  data,
-  width = "100%",
-  height = 400,
-  margin = { top: 5, right: 30, left: 20, bottom: 5 },
-  xDataKey,
-  yDataKey,
-  stroke = "#8884d8"
-}) => {
+export function Chart({ data, height = 350 }: ChartProps) {
   return (
-    <ResponsiveContainer width={width} height={height}>
-      <LineChart
-        data={data}
-        margin={margin}
-      >
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey={xDataKey} />
-        <YAxis />
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+        <XAxis
+          dataKey="name"
+          className="text-sm text-muted-foreground"
+        />
+        <YAxis
+          className="text-sm text-muted-foreground"
+        />
         <Tooltip />
-        <Line type="monotone" dataKey={yDataKey} stroke={stroke} />
-      </LineChart>
+        <Area
+          type="monotone"
+          dataKey="value"
+          className="fill-primary/10 stroke-primary"
+        />
+      </AreaChart>
     </ResponsiveContainer>
   );
-};
-
-export { Chart };
+}

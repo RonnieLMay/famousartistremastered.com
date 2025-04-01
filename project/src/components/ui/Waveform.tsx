@@ -1,80 +1,77 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface WaveformProps {
   audioUrl: string;
-  color?: string;
-  height?: number;
 }
 
-const Waveform: React.FC<WaveformProps> = ({
-  audioUrl,
-  color = '#4F46E5',
-  height = 100
-}) => {
+interface WaveformState {
+  isPlaying: boolean;
+  duration: number;
+  currentTime: number;
+}
+
+const Waveform: React.FC<WaveformProps> = ({ audioUrl }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [state, setState] = useState<WaveformState>({
+    isPlaying: false,
+    duration: 0,
+    currentTime: 0
+  });
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const analyser = audioContext.createAnalyser();
     const audio = new Audio(audioUrl);
-    const source = audioContext.createMediaElementSource(audio);
+    audioRef.current = audio;
 
-    source.connect(analyser);
-    analyser.connect(audioContext.destination);
+    audio.addEventListener('loadedmetadata', () => {
+      setState(prev => ({ ...prev, duration: audio.duration }));
+    });
 
-    analyser.fftSize = 256;
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    audio.addEventListener('timeupdate', () => {
+      setState(prev => ({ ...prev, currentTime: audio.currentTime }));
+    });
 
-    const draw = () => {
-      const WIDTH = canvas.width;
-      const HEIGHT = canvas.height;
-
-      requestAnimationFrame(draw);
-
-      analyser.getByteFrequencyData(dataArray);
-
-      ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-      const barWidth = (WIDTH / bufferLength) * 2.5;
-      let barHeight;
-      let x = 0;
-
-      for (let i = 0; i < bufferLength; i++) {
-        barHeight = (dataArray[i] / 255) * HEIGHT;
-
-        ctx.fillStyle = color;
-        ctx.fillRect(x, HEIGHT - barHeight, barWidth, barHeight);
-
-        x += barWidth + 1;
-      }
-    };
-
-    audio.play();
-    draw();
+    audio.addEventListener('ended', () => {
+      setState(prev => ({ ...prev, isPlaying: false }));
+    });
 
     return () => {
       audio.pause();
       audio.src = '';
-      audioContext.close();
     };
-  }, [audioUrl, color]);
+  }, [audioUrl]);
+
+  const togglePlayPause = () => {
+    if (!audioRef.current) return;
+
+    if (state.isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+
+    setState(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
+  };
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={800}
-      height={height}
-      className="w-full rounded-lg"
-    />
+    <div className="w-full">
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-24 bg-gray-900/50 rounded-lg cursor-pointer"
+        onClick={togglePlayPause}
+      />
+      <div className="flex justify-between mt-2 text-sm text-gray-400">
+        <span>{formatTime(state.currentTime)}</span>
+        <span>{formatTime(state.duration)}</span>
+      </div>
+    </div>
   );
+};
+
+const formatTime = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 export default Waveform;
