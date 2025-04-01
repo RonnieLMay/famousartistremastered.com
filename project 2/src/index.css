@@ -9,7 +9,7 @@
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background-color: #050816;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -41,8 +41,8 @@
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 
-    0 0 20px rgba(var(--neon-blue), 0.2),
-    inset 0 0 20px rgba(var(--neon-purple), 0.1);
+    0 0 20px rgba(66, 135, 245, 0.2),
+    inset 0 0 20px rgba(147, 51, 234, 0.1);
 }
 
 /* 3D Transform Styles */
@@ -52,33 +52,34 @@
 }
 
 .hover-3d {
-  transition: transform 0.3s ease;
+  transition: all 0.3s ease;
 }
 
 .hover-3d:hover {
   transform: translateY(-5px) rotateX(10deg);
+  text-shadow: 0 0 10px rgba(66, 135, 245, 0.5);
 }
 
 /* Neon Effects */
 .neon-text {
   text-shadow: 
-    0 0 10px rgba(var(--neon-blue), 0.7),
-    0 0 20px rgba(var(--neon-blue), 0.5),
-    0 0 30px rgba(var(--neon-blue), 0.3);
+    0 0 10px rgba(66, 135, 245, 0.7),
+    0 0 20px rgba(66, 135, 245, 0.5),
+    0 0 30px rgba(66, 135, 245, 0.3);
 }
 
 .neon-border {
-  border: 1px solid rgba(var(--neon-blue), 0.5);
+  border: 1px solid rgba(66, 135, 245, 0.5);
   box-shadow: 
-    0 0 10px rgba(var(--neon-blue), 0.3),
-    inset 0 0 10px rgba(var(--neon-blue), 0.3);
+    0 0 10px rgba(66, 135, 245, 0.3),
+    inset 0 0 10px rgba(66, 135, 245, 0.3);
 }
 
 /* Animated Background */
 .cyber-grid {
   background-image: 
-    linear-gradient(rgba(var(--neon-blue), 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(var(--neon-blue), 0.1) 1px, transparent 1px);
+    linear-gradient(rgba(66, 135, 245, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(66, 135, 245, 0.1) 1px, transparent 1px);
   background-size: 50px 50px;
   animation: gridMove 20s linear infinite;
 }
@@ -92,7 +93,7 @@
   }
 }
 
-/* Custom Scrollbar */
+/* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -102,10 +103,35 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(var(--neon-blue), 0.5);
+  background: rgba(66, 135, 245, 0.5);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--neon-blue), 0.7);
+  background: rgba(66, 135, 245, 0.7);
+}
+
+/* Button Animations */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(66, 135, 245, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(66, 135, 245, 0.5);
+  }
+}
+
+.button-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Loading Animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-spin {
+  animation: spin 1s linear infinite;
 }
