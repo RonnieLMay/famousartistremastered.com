@@ -1,71 +1,88 @@
+import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
+import { Button } from './button';
+import { toast } from 'sonner';
 
-interface PaymentGatewayError extends Error {
-  code?: string;
-  decline_code?: string;
-  payment_intent?: {
-    status: string;
-    id: string;
-  };
+interface PaymentGatewayProps {
+  amount: number;
+  onSuccess?: () => void;
+  onError?: (error: Error) => void;
 }
 
-class PaymentGateway {
-  private static stripe: Promise<any>;
-  private static STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
-  private static getStripe() {
-    if (!this.stripe) {
-      if (!this.STRIPE_PUBLIC_KEY) {
-        throw new Error('Stripe public key is not configured');
-      }
-      this.stripe = loadStripe(this.STRIPE_PUBLIC_KEY);
-    }
-    return this.stripe;
-  }
+const PaymentGateway: React.FC<PaymentGatewayProps> = ({
+  amount,
+  onSuccess,
+  onError
+}) => {
+  const [loading, setLoading] = useState(false);
 
-  static async processPayment(amount: number): Promise<void> {
+  const handlePayment = async () => {
     try {
-      const stripe = await this.getStripe();
-      
-      // Create payment intent
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          amount: Math.round(amount * 100), // Convert to cents
-        }),
-      });
+      setLoading(true);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Payment failed');
-      }
-
-      const { clientSecret } = await response.json();
-
-      // Confirm the payment
-      const { error } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: {
-            token: 'tok_visa', // Test token, replace with real card in production
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-        },
-      });
+          body: JSON.stringify({
+            amount: amount * 100, // Convert to cents
+            success_url: `${window.location.origin}/success`,
+            cancel_url: `${window.location.origin}/cancel`,
+          }),
+        }
+      );
+
+      const { sessionId, error } = await response.json();
 
       if (error) {
-        const paymentError = error as PaymentGatewayError;
-        throw new Error(paymentError.message || 'Payment failed');
+        throw new Error(error);
       }
+
+      const stripe = await stripePromise;
+      if (!stripe) {
+        throw new Error('Stripe failed to initialize');
+      }
+
+      const { error: stripeError } = await stripe.redirectToCheckout({
+        sessionId,
+      });
+
+      if (stripeError) {
+        throw stripeError;
+      }
+
+      onSuccess?.();
     } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('An unexpected error occurred during payment');
+      const errorMessage = error instanceof Error ? error.message : 'Payment failed';
+      toast.error(errorMessage);
+      onError?.(error instanceof Error ? error : new Error(errorMessage));
+    } finally {
+      setLoading(false);
     }
-  }
-}
+  };
+
+  return (
+    <Button
+      onClick={handlePayment}
+      disabled={loading}
+      className="w-full"
+    >
+      {loading ? (
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+          Processing...
+        </div>
+      ) : (
+        'Pay Now'
+      )}
+    </Button>
+  );
+};
 
 export default PaymentGateway;

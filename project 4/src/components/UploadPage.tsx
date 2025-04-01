@@ -4,8 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { CheckCircle2, Download, Share2 } from "lucide-react";
-import PaymentGateway from "@/components/ui/PaymentGateway";
+import { toast } from "sonner";
+import MasterPage from "./MasterPage";
+import { useAuth } from "@/components/ui/AuthSystem";
+import { supabase } from "@/lib/supabase";
 
 interface UploadState {
   selectedFile: File | null;
@@ -15,8 +17,6 @@ interface UploadState {
   processedFile: string | null;
   previewUrl: string | null;
   preset: string;
-  darkMode: boolean;
-  isPaid: boolean;
 }
 
 interface MasteringPreset {
@@ -44,6 +44,7 @@ const masteringPresets: MasteringPreset[] = [
 ];
 
 const UploadPage: React.FC = () => {
+  const { user } = useAuth();
   const [state, setState] = useState<UploadState>({
     selectedFile: null,
     uploading: false,
@@ -51,9 +52,7 @@ const UploadPage: React.FC = () => {
     message: "",
     processedFile: null,
     previewUrl: null,
-    preset: "studio-warmth",
-    darkMode: true,
-    isPaid: false
+    preset: "studio-warmth"
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,67 +69,73 @@ const UploadPage: React.FC = () => {
   };
 
   const handleUpload = async () => {
-    if (!state.selectedFile) {
-      setState(prev => ({ ...prev, message: "Please select a file first." }));
+    if (!user) {
+      toast.error("Please sign in to upload tracks");
       return;
     }
 
-    setState(prev => ({ ...prev, uploading: true }));
-    const formData = new FormData();
-    formData.append("file", state.selectedFile);
-    formData.append("preset", state.preset);
+    if (!state.selectedFile) {
+      toast.error("Please select a file first");
+      return;
+    }
+
+    setState(prev => ({ ...prev, uploading: true, progress: 0 }));
 
     try {
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Authentication required");
+      }
+
+      const formData = new FormData();
+      formData.append("file", state.selectedFile);
+      formData.append("preset", state.preset);
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload`, {
         method: "POST",
         body: formData,
         headers: {
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${session.access_token}`,
         },
       });
 
-      const result = await response.json();
-      if (response.ok) {
-        setState(prev => ({
-          ...prev,
-          message: "File processed successfully!",
-          processedFile: result.processed_url,
-          previewUrl: result.preview_url
-        }));
-      } else {
-        setState(prev => ({
-          ...prev,
-          message: result.error || "Upload failed. Try again."
-        }));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
       }
-    } catch (error) {
+
+      const result = await response.json();
+      
+      if (!result.processed_url || !result.preview_url) {
+        throw new Error("Invalid response from server");
+      }
+
       setState(prev => ({
         ...prev,
-        message: "Error uploading file. Please try again."
+        message: "File processed successfully!",
+        processedFile: result.processed_url,
+        previewUrl: result.preview_url,
+        progress: 100
+      }));
+
+      toast.success("Track mastered successfully!");
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error(error instanceof Error ? error.message : "Error processing track");
+      setState(prev => ({
+        ...prev,
+        message: "Error uploading file. Please try again.",
+        progress: 0
       }));
     } finally {
       setState(prev => ({ ...prev, uploading: false }));
     }
   };
 
-  const handlePayment = async () => {
-    try {
-      await PaymentGateway.processPayment(1.99);
-      setState(prev => ({ ...prev, isPaid: true }));
-    } catch (error) {
-      console.error('Payment failed:', error);
-      setState(prev => ({
-        ...prev,
-        message: error instanceof Error ? error.message : "Payment failed. Please try again."
-      }));
-    }
-  };
-
-  const selectedPreset = masteringPresets.find(preset => preset.value === state.preset);
-
   return (
     <div className="relative min-h-screen bg-[#050816] cyber-grid overflow-hidden flex flex-col justify-center items-center p-6">
-      {/* Animated background elements */}
+      {/* Background animations */}
       <div className="absolute inset-0 w-full h-full">
         <motion.div
           className="absolute w-[600px] h-[600px] rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 blur-3xl"
@@ -213,16 +218,6 @@ const UploadPage: React.FC = () => {
                 ))}
               </SelectContent>
             </Select>
-            {selectedPreset && (
-              <motion.p 
-                className="text-sm text-gray-400 mt-1"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
-                {selectedPreset.description}
-              </motion.p>
-            )}
           </div>
 
           <div className="grid w-full items-center gap-2">
@@ -251,19 +246,6 @@ const UploadPage: React.FC = () => {
             </motion.div>
           )}
 
-          {state.message && (
-            <motion.div
-              className={`text-sm ${
-                state.message.includes("success") ? "text-green-400" : "text-yellow-400"
-              }`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              {state.message}
-            </motion.div>
-          )}
-
           <Button
             onClick={handleUpload}
             className="w-full hover-3d bg-gradient-to-r from-blue-500 to-purple-500 
@@ -282,53 +264,11 @@ const UploadPage: React.FC = () => {
           </Button>
 
           {state.processedFile && (
-            <motion.div
-              className="mt-6 space-y-6"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="glass-panel p-6 rounded-xl space-y-6">
-                <div className="flex items-center gap-3 text-green-400">
-                  <CheckCircle2 className="w-6 h-6" />
-                  <h3 className="text-xl font-semibold">Mastering Complete!</h3>
-                </div>
-
-                <div className="space-y-4">
-                  {state.isPaid ? (
-                    <motion.a
-                      href={state.processedFile}
-                      className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl 
-                        bg-gradient-to-r from-green-500 to-blue-500 text-white 
-                        hover:from-green-600 hover:to-blue-600 transition-all duration-300 
-                        hover-3d neon-border"
-                      download
-                      whileHover={{ scale: 1.02 }}
-                    >
-                      <Download className="w-5 h-5" />
-                      Download Mastered Track
-                    </motion.a>
-                  ) : (
-                    <Button
-                      onClick={handlePayment}
-                      className="w-full hover-3d bg-gradient-to-r from-yellow-500 to-orange-500 
-                        hover:from-yellow-600 hover:to-orange-600 text-white shadow-lg neon-border
-                        flex items-center justify-center gap-2"
-                    >
-                      <Download className="w-5 h-5" />
-                      Pay $1.99 to Download
-                    </Button>
-                  )}
-                </div>
-
-                <div className="pt-4 border-t border-white/10">
-                  <div className="flex items-center gap-2 text-gray-400 mb-2">
-                    <Share2 className="w-4 h-4" />
-                    <span className="text-sm">Share your mastered track</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
+            <MasterPage
+              processedFile={state.processedFile}
+              previewUrl={state.previewUrl}
+              originalFileName={state.selectedFile?.name || 'track'}
+            />
           )}
         </motion.div>
       </motion.div>

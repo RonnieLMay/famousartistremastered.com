@@ -1,120 +1,69 @@
-import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Button } from './button';
-import { Input } from './input';
-import { Label } from './label';
-import { Alert } from './alert';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
+import SignIn from './SignIn';
 
-interface AuthSystemProps {
-  onAuthSuccess?: () => void;
+interface AuthContextType {
+  user: User | null;
+  signOut: () => Promise<void>;
 }
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  signOut: async () => {},
+});
 
-const AuthSystem: React.FC<AuthSystemProps> = ({ onAuthSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+export const useAuth = () => useContext(AuthContext);
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+interface AuthSystemProps {
+  children: React.ReactNode;
+}
 
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+const AuthSystem: React.FC<AuthSystemProps> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-      if (error) throw error;
-      onAuthSuccess?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during sign up');
-    } finally {
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
     }
   };
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-      onAuthSuccess?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during sign in');
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!user) {
+    return <SignIn />;
+  }
 
   return (
-    <div className="w-full max-w-md mx-auto space-y-6">
-      <form onSubmit={handleSignIn} className="space-y-4">
-        {error && (
-          <Alert variant="destructive">
-            {error}
-          </Alert>
-        )}
-        
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="Enter your email"
-            className="w-full"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            placeholder="Enter your password"
-            className="w-full"
-          />
-        </div>
-
-        <div className="flex gap-4">
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full"
-          >
-            {loading ? 'Loading...' : 'Sign In'}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSignUp}
-            disabled={loading}
-            variant="outline"
-            className="w-full"
-          >
-            Sign Up
-          </Button>
-        </div>
-      </form>
-    </div>
+    <AuthContext.Provider value={{ user, signOut }}>
+      {children}
+    </AuthContext.Provider>
   );
 };
 

@@ -1,54 +1,66 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Share2, Twitter, Facebook, Link as LinkIcon } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Facebook, Twitter, Link as LinkIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface SocialShareProps {
-  fileUrl: string;
+  fileUrl: string | null;
 }
 
 const SocialShare: React.FC<SocialShareProps> = ({ fileUrl }) => {
-  const shareText = 'Check out my newly mastered track!';
-  const encodedText = encodeURIComponent(shareText);
-  const encodedUrl = encodeURIComponent(fileUrl);
+  const shareUrl = fileUrl || window.location.href;
+  const title = "Check out my mastered track!";
 
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(fileUrl);
-      // You could add a toast notification here
-    } catch (err) {
-      console.error('Failed to copy link:', err);
+  const handleShare = (platform: string) => {
+    let url = '';
+    switch (platform) {
+      case 'facebook':
+        url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+        break;
+      case 'twitter':
+        url = `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(title)}`;
+        break;
+      case 'copy':
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          toast.success('Link copied to clipboard!');
+        }).catch(() => {
+          toast.error('Failed to copy link');
+        });
+        return;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'width=600,height=400');
     }
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="mt-4">
-          <Share2 className="h-4 w-4 mr-2" />
-          Share
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`, '_blank')}>
-          <Twitter className="h-4 w-4 mr-2" />
-          Share on Twitter
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`, '_blank')}>
-          <Facebook className="h-4 w-4 mr-2" />
-          Share on Facebook
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleCopyLink}>
-          <LinkIcon className="h-4 w-4 mr-2" />
-          Copy Link
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="flex gap-2">
+      <Button
+        onClick={() => handleShare('facebook')}
+        variant="outline"
+        size="icon"
+        className="hover:bg-blue-500/20"
+      >
+        <Facebook className="h-4 w-4" />
+      </Button>
+      <Button
+        onClick={() => handleShare('twitter')}
+        variant="outline"
+        size="icon"
+        className="hover:bg-blue-500/20"
+      >
+        <Twitter className="h-4 w-4" />
+      </Button>
+      <Button
+        onClick={() => handleShare('copy')}
+        variant="outline"
+        size="icon"
+        className="hover:bg-blue-500/20"
+      >
+        <LinkIcon className="h-4 w-4" />
+      </Button>
+    </div>
   );
 };
 
