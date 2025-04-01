@@ -1,185 +1,330 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 
 interface WaveformProps {
   audioUrl: string;
-  type: string;
+  type: 'classic' | 'bars' | 'line' | 'circle';
 }
 
 const Waveform: React.FC<WaveformProps> = ({ audioUrl, type }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>();
-  const [isPlaying, setIsPlaying] = useState(false);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  const cleanup = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.src = '';
+    }
+  };
 
   useEffect(() => {
+    cleanup();
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Set canvas dimensions with device pixel ratio for sharp rendering
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.scale(dpr, dpr);
 
-    const drawWaveform = (audioBuffer: AudioBuffer) => {
-      const data = audioBuffer.getChannelData(0);
-      const step = Math.ceil(data.length / canvas.width);
-      const amp = canvas.height / 2;
+    const audioElement = new Audio();
+    audioElement.crossOrigin = "anonymous";
+    audioElement.src = audioUrl;
+    audioElementRef.current = audioElement;
 
-      const drawFrame = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = 'rgb(66, 135, 245)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContextRef.current = audioContext;
 
-        switch (type) {
-          case 'bars':
-            const barWidth = 2;
-            const barGap = 1;
-            const totalBars = Math.floor(canvas.width / (barWidth + barGap));
-            const samplesPerBar = Math.floor(data.length / totalBars);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    analyserRef.current = analyser;
 
-            for (let i = 0; i < totalBars; i++) {
-              let sum = 0;
-              for (let j = 0; j < samplesPerBar; j++) {
-                sum += Math.abs(data[i * samplesPerBar + j]);
-              }
-              const average = sum / samplesPerBar;
-              const barHeight = average * amp;
+    const source = audioContext.createMediaElementSource(audioElement);
+    sourceNodeRef.current = source;
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
 
-              const x = i * (barWidth + barGap);
-              ctx.fillStyle = `rgba(66, 135, 245, ${0.5 + average})`;
-              ctx.fillRect(x, amp - barHeight / 2, barWidth, barHeight);
-            }
-            break;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
 
-          case 'line':
-            ctx.moveTo(0, amp);
-            for (let i = 0; i < canvas.width; i++) {
-              let sum = 0;
-              for (let j = 0; j < step; j++) {
-                sum += Math.abs(data[i * step + j]);
-              }
-              const average = sum / step;
-              ctx.lineTo(i, amp + average * amp * 0.8);
-            }
-            ctx.stroke();
-            break;
+    const drawClassicWaveform = () => {
+      analyser.getByteTimeDomainData(dataArray);
+      
+      ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+      
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgb(66, 135, 245)';
+      ctx.beginPath();
 
-          case 'circle':
-            const radius = Math.min(canvas.width, canvas.height) / 4;
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const totalPoints = 360;
-            const samplesPerPoint = Math.floor(data.length / totalPoints);
+      const sliceWidth = rect.width / bufferLength;
+      let x = 0;
 
-            for (let i = 0; i < totalPoints; i++) {
-              let sum = 0;
-              for (let j = 0; j < samplesPerPoint; j++) {
-                sum += Math.abs(data[i * samplesPerPoint + j]);
-              }
-              const average = sum / samplesPerPoint;
-              const angle = (i * Math.PI * 2) / totalPoints;
-              const r = radius + average * radius * 0.8;
-              
-              const x = centerX + Math.cos(angle) * r;
-              const y = centerY + Math.sin(angle) * r;
-              
-              if (i === 0) {
-                ctx.moveTo(x, y);
-              } else {
-                ctx.lineTo(x, y);
-              }
-            }
-            ctx.closePath();
-            ctx.strokeStyle = 'rgba(66, 135, 245, 0.8)';
-            ctx.stroke();
-            break;
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = v * (rect.height / 2);
 
-          default: // classic
-            ctx.moveTo(0, amp);
-            for (let i = 0; i < canvas.width; i++) {
-              let min = 1.0;
-              let max = -1.0;
-              for (let j = 0; j < step; j++) {
-                const datum = data[i * step + j];
-                if (datum < min) min = datum;
-                if (datum > max) max = datum;
-              }
-              ctx.lineTo(i, amp + min * amp * 0.8);
-              ctx.lineTo(i, amp + max * amp * 0.8);
-            }
-            ctx.stroke();
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
         }
 
-        // Draw playback position line if audio is playing
-        if (isPlaying && audioElementRef.current) {
-          const currentTime = audioElementRef.current.currentTime;
-          const duration = audioElementRef.current.duration;
-          const position = (currentTime / duration) * canvas.width;
+        x += sliceWidth;
+      }
 
-          ctx.beginPath();
-          ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-          ctx.lineWidth = 2;
-          ctx.moveTo(position, 0);
-          ctx.lineTo(position, canvas.height);
-          ctx.stroke();
-        }
-
-        if (isPlaying) {
-          animationFrameRef.current = requestAnimationFrame(drawFrame);
-        }
-      };
-
-      drawFrame();
+      ctx.lineTo(rect.width, rect.height / 2);
+      
+      // Add glow effect
+      ctx.shadowColor = 'rgba(66, 135, 245, 0.5)';
+      ctx.shadowBlur = 15;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      
+      ctx.stroke();
+      
+      // Reset shadow
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
     };
 
-    const loadAndDrawWaveform = async () => {
-      try {
-        const response = await fetch(audioUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        
-        const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-        drawWaveform(audioBuffer);
+    const drawBarsWaveform = () => {
+      analyser.getByteFrequencyData(dataArray);
 
-        // Set up audio element for playback tracking
-        if (!audioElementRef.current) {
-          audioElementRef.current = new Audio(audioUrl);
-          audioElementRef.current.addEventListener('play', () => setIsPlaying(true));
-          audioElementRef.current.addEventListener('pause', () => setIsPlaying(false));
-          audioElementRef.current.addEventListener('ended', () => setIsPlaying(false));
+      ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      const barCount = 64;
+      const barWidth = (rect.width / barCount) * 0.8;
+      const barSpacing = (rect.width / barCount) * 0.2;
+      const samplesPerBar = Math.floor(bufferLength / barCount);
+
+      for (let i = 0; i < barCount; i++) {
+        let sum = 0;
+        for (let j = 0; j < samplesPerBar; j++) {
+          sum += dataArray[i * samplesPerBar + j];
         }
-      } catch (error) {
-        console.error('Error loading audio:', error);
+        const average = sum / samplesPerBar;
+        const barHeight = (average / 255) * rect.height;
+        const x = i * (barWidth + barSpacing);
+
+        const gradient = ctx.createLinearGradient(0, rect.height, 0, rect.height - barHeight);
+        gradient.addColorStop(0, 'rgba(66, 135, 245, 0.8)');
+        gradient.addColorStop(1, 'rgba(147, 51, 234, 0.8)');
+
+        ctx.fillStyle = gradient;
+        ctx.shadowColor = 'rgba(66, 135, 245, 0.5)';
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.fillRect(x, rect.height - barHeight, barWidth, barHeight);
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    };
+
+    const drawCircleWaveform = () => {
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const radius = Math.min(centerX, centerY) * 0.8;
+      const segments = 180;
+      const angleStep = (Math.PI * 2) / segments;
+
+      ctx.beginPath();
+      for (let i = 0; i < segments; i++) {
+        const amplitude = dataArray[i] / 255;
+        const r = radius * (1 + amplitude * 0.3);
+        const angle = i * angleStep;
+        const x = centerX + Math.cos(angle) * r;
+        const y = centerY + Math.sin(angle) * r;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.closePath();
+
+      const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.5, centerX, centerY, radius * 1.3);
+      gradient.addColorStop(0, 'rgba(66, 135, 245, 0.8)');
+      gradient.addColorStop(1, 'rgba(147, 51, 234, 0.8)');
+
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(66, 135, 245, 0.5)';
+      ctx.shadowBlur = 15;
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    };
+
+    const drawLineWaveform = () => {
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.fillStyle = 'rgba(5, 8, 22, 0.2)';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+
+      const points: [number, number][] = [];
+      const sliceWidth = rect.width / bufferLength;
+      
+      for (let i = 0; i < bufferLength; i++) {
+        const x = i * sliceWidth;
+        const v = dataArray[i] / 255;
+        const y = rect.height - (v * rect.height);
+        points.push([x, y]);
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(0, rect.height);
+      
+      // Draw the bottom line
+      for (let i = 0; i < points.length; i++) {
+        const [x, y] = points[i];
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const [xPrev, yPrev] = points[i - 1];
+          const xMid = (x + xPrev) / 2;
+          const yMid = (y + yPrev) / 2;
+          ctx.quadraticCurveTo(xPrev, yPrev, xMid, yMid);
+        }
+      }
+
+      const gradient = ctx.createLinearGradient(0, 0, rect.width, 0);
+      gradient.addColorStop(0, 'rgba(66, 135, 245, 0.8)');
+      gradient.addColorStop(0.5, 'rgba(147, 51, 234, 0.8)');
+      gradient.addColorStop(1, 'rgba(66, 135, 245, 0.8)');
+
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(66, 135, 245, 0.5)';
+      ctx.shadowBlur = 15;
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    };
+
+    const draw = () => {
+      animationFrameRef.current = requestAnimationFrame(draw);
+
+      switch (type) {
+        case 'bars':
+          drawBarsWaveform();
+          break;
+        case 'circle':
+          drawCircleWaveform();
+          break;
+        case 'line':
+          drawLineWaveform();
+          break;
+        default:
+          drawClassicWaveform();
+      }
+
+      // Draw progress line
+      if (audioElement) {
+        const progress = audioElement.currentTime / audioElement.duration;
+        const progressX = progress * rect.width;
+        
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.moveTo(progressX, 0);
+        ctx.lineTo(progressX, rect.height);
+        ctx.stroke();
       }
     };
 
-    loadAndDrawWaveform();
+    const handlePlay = () => {
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+      draw();
+    };
 
-    return () => {
+    const handlePause = () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-      if (audioElementRef.current) {
-        audioElementRef.current.removeEventListener('play', () => setIsPlaying(true));
-        audioElementRef.current.removeEventListener('pause', () => setIsPlaying(false));
-        audioElementRef.current.removeEventListener('ended', () => setIsPlaying(false));
-      }
     };
-  }, [audioUrl, type, isPlaying]);
+
+    audioElement.addEventListener('play', handlePlay);
+    audioElement.addEventListener('pause', handlePause);
+    audioElement.addEventListener('ended', handlePause);
+
+    const handleResize = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    if (!audioElement.paused) {
+      handlePlay();
+    }
+
+    return () => {
+      audioElement.removeEventListener('play', handlePlay);
+      audioElement.removeEventListener('pause', handlePause);
+      audioElement.removeEventListener('ended', handlePause);
+      window.removeEventListener('resize', handleResize);
+      cleanup();
+    };
+  }, [audioUrl, type]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full h-[120px] rounded-xl bg-black/20 backdrop-blur-sm"
-      width={800}
-      height={120}
-    />
+    <motion.div 
+      className="relative w-full"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      <canvas
+        ref={canvasRef}
+        className="w-full h-32 rounded-lg bg-[#050816]/50 backdrop-blur-sm"
+      />
+    </motion.div>
   );
 };
 

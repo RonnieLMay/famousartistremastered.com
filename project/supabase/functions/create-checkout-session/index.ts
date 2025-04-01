@@ -23,19 +23,17 @@ serve(async (req) => {
   }
 
   try {
-    // Verify the request is authenticated with Supabase
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      throw new Error('Missing authorization header');
-    }
-
     const { amount, success_url, cancel_url } = await req.json();
 
     if (!amount || amount <= 0) {
       throw new Error('Invalid amount');
     }
 
-    // Create a Checkout Session with proper error handling
+    if (!success_url || !cancel_url) {
+      throw new Error('Missing success_url or cancel_url');
+    }
+
+    // Create a Checkout Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -52,14 +50,12 @@ serve(async (req) => {
         },
       ],
       mode: 'payment',
-      success_url: `${success_url}?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: success_url,
       cancel_url: cancel_url,
     });
 
     return new Response(
-      JSON.stringify({ 
-        sessionId: session.id 
-      }),
+      JSON.stringify({ sessionId: session.id }),
       {
         headers: {
           ...corsHeaders,

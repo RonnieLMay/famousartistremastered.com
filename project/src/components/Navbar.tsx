@@ -2,8 +2,12 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Music4 } from "lucide-react";
+import { useAuth } from "@/components/ui/AuthSystem";
+import { Button } from "@/components/ui/button";
 
 const Navbar: React.FC = () => {
+  const { user, signOut } = useAuth();
+
   return (
     <motion.nav
       className="fixed w-full z-40 top-0 left-0"
@@ -31,6 +35,27 @@ const Navbar: React.FC = () => {
             >
               Upload
             </Link>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <span className="text-gray-300">{user.email}</span>
+                <Button 
+                  variant="outline" 
+                  onClick={() => signOut()}
+                  className="hover-3d border-blue-500/30 hover:border-blue-500/50"
+                >
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Link to="/upload">
+                <Button 
+                  variant="outline"
+                  className="hover-3d border-blue-500/30 hover:border-blue-500/50"
+                >
+                  Sign In
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -38,4 +63,4 @@ const Navbar: React.FC = () => {
   );
 };
 
-export default Navbar
+export default Navbar;

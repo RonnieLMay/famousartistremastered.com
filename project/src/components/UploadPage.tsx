@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import MasterPage from "./MasterPage";
+import { useAuth } from "@/components/ui/AuthSystem";
 
 interface UploadState {
   selectedFile: File | null;
@@ -42,6 +43,7 @@ const masteringPresets: MasteringPreset[] = [
 ];
 
 const UploadPage: React.FC = () => {
+  const { user } = useAuth();
   const [state, setState] = useState<UploadState>({
     selectedFile: null,
     uploading: false,
@@ -66,6 +68,11 @@ const UploadPage: React.FC = () => {
   };
 
   const handleUpload = async () => {
+    if (!user) {
+      toast.error("Please sign in to upload tracks");
+      return;
+    }
+
     if (!state.selectedFile) {
       toast.error("Please select a file first");
       return;

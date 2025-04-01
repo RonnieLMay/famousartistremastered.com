@@ -1,126 +1,100 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { motion } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Button } from './button';
+import { Input } from './input';
+import { Label } from './label';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const signInSchema = z.object({
+  email: z.string().email('Please enter a valid email'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
 
-interface SignInProps {
-  onSignIn?: () => void;
-}
+type SignInFormData = z.infer<typeof signInSchema>;
 
-export const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [isSignUp, setIsSignUp] = React.useState(false);
+const SignIn: React.FC = () => {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SignInFormData>({
+    resolver: zodResolver(signInSchema),
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
+  const onSubmit = async (data: SignInFormData) => {
     try {
-      const { error } = isSignUp
-        ? await supabase.auth.signUp({
-            email,
-            password,
-          })
-        : await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
 
       if (error) throw error;
-
-      if (!isSignUp) {
-        onSignIn?.();
-      } else {
-        setError('Please check your email to confirm your account');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setLoading(false);
+      toast.success('Signed in successfully!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to sign in');
     }
   };
 
   return (
-    <motion.div
-      className="mt-8 p-6 bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 w-full max-w-md"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2 }}
-    >
-      <h2 className="text-2xl font-bold mb-4 text-white">
-        {isSignUp ? 'Create Account' : 'Sign In'}
-      </h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label htmlFor="email" className="text-white">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="bg-gray-700 border-gray-600 text-white"
-            placeholder="your@email.com"
-            required
-          />
+    <div className="min-h-screen flex items-center justify-center bg-[#050816] p-4">
+      <div className="glass-panel w-full max-w-md p-8 rounded-2xl space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold neon-text bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+            Welcome Back
+          </h1>
+          <p className="text-gray-400 mt-2">Sign in to continue mastering</p>
         </div>
-        <div>
-          <Label htmlFor="password" className="text-white">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="bg-gray-700 border-gray-600 text-white"
-            placeholder="••••••••"
-            required
-          />
-        </div>
-        {error && (
-          <motion.p
-            className="text-red-400 text-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              {...register('email')}
+              className="glass-panel border-none"
+            />
+            {errors.email && (
+              <p className="text-sm text-red-500">{errors.email.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              {...register('password')}
+              className="glass-panel border-none"
+            />
+            {errors.password && (
+              <p className="text-sm text-red-500">{errors.password.message}</p>
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full hover-3d bg-gradient-to-r from-blue-500 to-purple-500 
+              hover:from-blue-600 hover:to-purple-600 text-white shadow-lg neon-border"
           >
-            {error}
-          </motion.p>
-        )}
-        <Button
-          type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white"
-          disabled={loading}
-        >
-          {loading ? (
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              {isSignUp ? 'Creating Account...' : 'Signing In...'}
-            </div>
-          ) : (
-            isSignUp ? 'Create Account' : 'Sign In'
-          )}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full text-gray-300 hover:text-white hover:bg-gray-700"
-          onClick={() => setIsSignUp(!isSignUp)}
-        >
-          {isSignUp
-            ? 'Already have an account? Sign in'
-            : "Don't have an account? Sign up"}
-        </Button>
-      </form>
-    </motion.div>
+            {isSubmitting ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Signing in...
+              </div>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+        </form>
+      </div>
+    </div>
   );
 };
 

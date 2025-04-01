@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { CheckCircle2, Download, Share2, AudioWaveform as WaveformIcon } from "lucide-react";
+import { CheckCircle2, Download, Share2, AudioWaveform as WaveformIcon, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import AudioControls from "@/components/ui/AudioControls";
 import SocialShare from "@/components/ui/SocialShare";
@@ -20,44 +20,16 @@ const waveformTypes = [
   { value: "bars", label: "Bars", description: "Bar-style visualization" },
   { value: "line", label: "Line", description: "Continuous line visualization" },
   { value: "circle", label: "Circle", description: "Circular waveform display" }
-];
+] as const;
 
-const audioFormats = [
-  { value: "wav", label: "WAV", description: "Uncompressed audio (best quality)" },
-  { value: "mp3", label: "MP3", description: "Compressed audio (smaller size)" },
-  { value: "ogg", label: "OGG", description: "Open format compressed audio" },
-  { value: "flac", label: "FLAC", description: "Lossless compressed audio" }
-];
+type WaveformType = typeof waveformTypes[number]["value"];
 
 const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, originalFileName }) => {
-  const [waveformType, setWaveformType] = useState("classic");
-  const [downloadFormat, setDownloadFormat] = useState("wav");
+  const [waveformType, setWaveformType] = useState<WaveformType>("classic");
 
-  const handleDownload = async (url: string, filename: string) => {
-    try {
-      // Add format parameter to the URL
-      const downloadUrl = `${url}&format=${downloadFormat}`;
-      const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error('Download failed');
-      
-      const blob = await response.blob();
-      const fileUrl = window.URL.createObjectURL(blob);
-      
-      // Create temporary link and trigger download
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = filename.replace(/\.[^/.]+$/, `.${downloadFormat}`); // Replace extension
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up
-      window.URL.revokeObjectURL(fileUrl);
-      toast.success(`Download started in ${downloadFormat.toUpperCase()} format!`);
-    } catch (error) {
-      toast.error('Failed to download file');
-      console.error('Download error:', error);
-    }
+  const handlePurchase = () => {
+    // Open Stripe payment link in a new tab
+    window.open('https://buy.stripe.com/14k8zJ8B36X79m89AA', '_blank');
   };
 
   return (
@@ -78,7 +50,7 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
             <Label htmlFor="waveform" className="text-gray-300">Waveform Style</Label>
             <Select
               value={waveformType}
-              onValueChange={setWaveformType}
+              onValueChange={(value: WaveformType) => setWaveformType(value)}
             >
               <SelectTrigger className="glass-panel border-none mt-2">
                 <SelectValue placeholder="Select waveform style" />
@@ -99,32 +71,6 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
               </SelectContent>
             </Select>
           </div>
-
-          <div>
-            <Label htmlFor="format" className="text-gray-300">Download Format</Label>
-            <Select
-              value={downloadFormat}
-              onValueChange={setDownloadFormat}
-            >
-              <SelectTrigger className="glass-panel border-none mt-2">
-                <SelectValue placeholder="Select download format" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1a2e] border border-blue-500/30 shadow-xl backdrop-blur-xl">
-                {audioFormats.map((format) => (
-                  <SelectItem 
-                    key={format.value} 
-                    value={format.value}
-                    className="hover:bg-blue-500/10 focus:bg-blue-500/20 cursor-pointer"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-semibold">{format.label}</span>
-                      <span className="text-xs text-gray-400">{format.description}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         <div className="space-y-4">
@@ -137,17 +83,18 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
           <AudioControls fileUrl={processedFile || ''} />
           
           <Button
-            onClick={() => handleDownload(
-              processedFile!, 
-              `mastered_${originalFileName}`
-            )}
+            onClick={handlePurchase}
             className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl 
               bg-gradient-to-r from-green-500 to-blue-500 text-white 
               hover:from-green-600 hover:to-blue-600 transition-all duration-300 
               hover-3d neon-border"
           >
             <Download className="w-5 h-5" />
-            Download as {downloadFormat.toUpperCase()}
+            <span>Download Mastered Track</span>
+            <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-white/10 rounded-full">
+              <DollarSign className="w-4 h-4" />
+              <span>1.99</span>
+            </div>
           </Button>
         </div>
 
