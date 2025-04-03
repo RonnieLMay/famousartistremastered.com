@@ -3,16 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
-import { CheckCircle2, Download, Share2, AudioWaveform as WaveformIcon } from "lucide-react";
+import { CheckCircle2, Download, Share2, AudioWaveform as WaveformIcon, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import AudioControls from "@/components/ui/AudioControls";
 import SocialShare from "@/components/ui/SocialShare";
 import Waveform from "@/components/ui/Waveform";
+import { useAuth } from "@/components/ui/AuthSystem";
+import { supabase } from "@/lib/supabase";
 
 interface MasterPageProps {
   processedFile: string | null;
   previewUrl: string | null;
   originalFileName: string;
+  trackId: string;
 }
 
 const waveformTypes = [
@@ -22,44 +25,113 @@ const waveformTypes = [
   { value: "circle", label: "Circle", description: "Circular waveform display" }
 ] as const;
 
-const audioFormats = [
-  { value: "wav", label: "WAV", description: "Uncompressed audio (best quality)" },
-  { value: "mp3", label: "MP3", description: "Compressed audio (smaller size)" },
-  { value: "ogg", label: "OGG", description: "Open format compressed audio" },
-  { value: "flac", label: "FLAC", description: "Lossless compressed audio" }
-] as const;
-
 type WaveformType = typeof waveformTypes[number]["value"];
-type AudioFormat = typeof audioFormats[number]["value"];
 
-const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, originalFileName }) => {
+const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, originalFileName, trackId }) => {
+  const { user } = useAuth();
   const [waveformType, setWaveformType] = useState<WaveformType>("classic");
-  const [downloadFormat, setDownloadFormat] = useState<AudioFormat>("wav");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleDownload = async (url: string, filename: string) => {
+  const handlePurchase = async () => {
+    if (!user) {
+      toast.error("Please sign in to purchase");
+      return;
+    }
+
+    setIsProcessing(true);
+
     try {
-      // Add format parameter to the URL
-      const downloadUrl = `${url}&format=${downloadFormat}`;
-      const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error('Download failed');
-      
-      const blob = await response.blob();
-      const fileUrl = window.URL.createObjectURL(blob);
-      
-      // Create temporary link and trigger download
+      // Create purchase record
+      const { data: purchase, error: purchaseError } = await supabase
+        .from('purchases')
+        .insert({
+          user_id: user.id,
+          track_id: trackId,
+          amount: 199, // $1.99 in cents
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (purchaseError) throw purchaseError;
+
+      // Create payment intent
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({
+          amount: 199, // $1.99 in cents
+          purchaseId: purchase.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create payment intent');
+      }
+
+      const { clientSecret } = await response.json();
+
+      // Load Stripe
+      const { loadStripe } = await import('@stripe/stripe-js');
+      const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
+      if (!stripe) {
+        throw new Error('Failed to load Stripe');
+      }
+
+      // Confirm the payment
+      const { error: stripeError } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: {
+            token: 'tok_visa' // Test token, replace with real card element in production
+          }
+        }
+      });
+
+      if (stripeError) {
+        throw stripeError;
+      }
+
+      // Handle successful payment
+      const successResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/handle-payment-success`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          trackId: trackId
+        })
+      });
+
+      if (!successResponse.ok) {
+        throw new Error('Failed to process payment success');
+      }
+
+      const { downloadUrl } = await successResponse.json();
+
+      // Trigger download
       const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = filename.replace(/\.[^/.]+$/, `.${downloadFormat}`); // Replace extension
+      link.href = downloadUrl;
+      link.download = `mastered_${originalFileName}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      // Clean up
-      window.URL.revokeObjectURL(fileUrl);
-      toast.success(`Download started in ${downloadFormat.toUpperCase()} format!`);
+
+      toast.success('Your mastered track has been sent to your email!');
+
     } catch (error) {
-      toast.error('Failed to download file');
-      console.error('Download error:', error);
+      console.error('Purchase error:', error);
+      toast.error('Failed to process purchase. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -102,55 +174,50 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
               </SelectContent>
             </Select>
           </div>
-
-          <div>
-            <Label htmlFor="format" className="text-gray-300">Download Format</Label>
-            <Select
-              value={downloadFormat}
-              onValueChange={(value: AudioFormat) => setDownloadFormat(value)}
-            >
-              <SelectTrigger className="glass-panel border-none mt-2">
-                <SelectValue placeholder="Select download format" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1a2e] border border-blue-500/30 shadow-xl backdrop-blur-xl">
-                {audioFormats.map((format) => (
-                  <SelectItem 
-                    key={format.value} 
-                    value={format.value}
-                    className="hover:bg-blue-500/10 focus:bg-blue-500/20 cursor-pointer"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-semibold">{format.label}</span>
-                      <span className="text-xs text-gray-400">{format.description}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         <div className="space-y-4">
           {previewUrl && (
-            <Waveform 
-              audioUrl={previewUrl} 
-              type={waveformType}
-            />
+            <>
+              <Waveform 
+                audioUrl={previewUrl}
+                type={waveformType}
+                isPlaying={isPlaying}
+                currentTime={currentTime}
+                duration={duration}
+              />
+              <AudioControls 
+                fileUrl={previewUrl}
+                onPlaybackChange={setIsPlaying}
+                onTimeUpdate={setCurrentTime}
+                onDurationChange={setDuration}
+              />
+            </>
           )}
-          <AudioControls fileUrl={processedFile || ''} />
           
           <Button
-            onClick={() => processedFile && handleDownload(
-              processedFile, 
-              `mastered_${originalFileName}`
-            )}
+            onClick={handlePurchase}
+            disabled={isProcessing}
             className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl 
               bg-gradient-to-r from-green-500 to-blue-500 text-white 
               hover:from-green-600 hover:to-blue-600 transition-all duration-300 
-              hover-3d neon-border"
+              hover-3d neon-border disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download className="w-5 h-5" />
-            Download as {downloadFormat.toUpperCase()}
+            {isProcessing ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <span>Processing...</span>
+              </div>
+            ) : (
+              <>
+                <Download className="w-5 h-5" />
+                <span>Download Mastered Track</span>
+                <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-white/10 rounded-full">
+                  <DollarSign className="w-4 h-4" />
+                  <span>1.99</span>
+                </div>
+              </>
+            )}
           </Button>
         </div>
 

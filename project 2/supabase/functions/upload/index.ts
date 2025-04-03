@@ -17,20 +17,13 @@ const supabase = createClient(
 const getAudioMimeType = (filename: string): string => {
   const ext = filename.split('.').pop()?.toLowerCase();
   switch (ext) {
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'wav':
-      return 'audio/wav';
-    case 'ogg':
-      return 'audio/ogg';
-    case 'm4a':
-      return 'audio/mp4';
-    case 'aac':
-      return 'audio/aac';
-    case 'flac':
-      return 'audio/flac';
-    default:
-      return 'application/octet-stream';
+    case 'mp3': return 'audio/mpeg';
+    case 'wav': return 'audio/wav';
+    case 'ogg': return 'audio/ogg';
+    case 'm4a': return 'audio/mp4';
+    case 'aac': return 'audio/aac';
+    case 'flac': return 'audio/flac';
+    default: return 'application/octet-stream';
   }
 };
 
@@ -40,15 +33,55 @@ const isValidAudioType = (filename: string): boolean => {
   return validTypes.includes(ext ?? '');
 };
 
+const streamToArrayBuffer = async (stream: ReadableStream): Promise<ArrayBuffer> => {
+  const chunks = [];
+  const reader = stream.getReader();
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    return result.buffer;
+  } finally {
+    reader.releaseLock();
+  }
+};
+
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders
+    return new Response(null, { 
+      status: 204, 
+      headers: corsHeaders 
     });
   }
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing authorization header');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      throw new Error('Unauthorized');
+    }
+
     if (req.method === 'GET') {
       const url = new URL(req.url);
       const filePath = url.pathname.split('/download/')[1];
@@ -68,15 +101,13 @@ serve(async (req) => {
 
       if (error) throw error;
 
-      const contentType = getAudioMimeType(filePath);
       const headers = {
         ...corsHeaders,
-        'Content-Type': contentType,
+        'Content-Type': getAudioMimeType(filePath),
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'public, max-age=31536000',
       };
 
-      // Handle range requests for audio streaming
       const rangeHeader = req.headers.get('range');
       if (rangeHeader) {
         const arrayBuffer = await data.arrayBuffer();
@@ -133,50 +164,70 @@ serve(async (req) => {
       const processedFileName = `${uniqueId}/${timestamp}_processed_${file.name}`;
       const previewFileName = `${uniqueId}/${timestamp}_preview_${file.name}`;
 
-      const contentType = getAudioMimeType(file.name);
+      // Convert file to ArrayBuffer once for both uploads
+      const fileBuffer = await streamToArrayBuffer(file.stream());
 
-      // Upload the processed file
-      const { data: processedData, error: processedError } = await supabase
-        .storage
-        .from('audio')
-        .upload(processedFileName, file, {
-          contentType,
-          cacheControl: '3600',
-          upsert: false
-        });
+      // Upload files in parallel
+      const [processedUpload, previewUpload] = await Promise.all([
+        supabase.storage
+          .from('audio')
+          .upload(processedFileName, fileBuffer, {
+            contentType: getAudioMimeType(file.name),
+            cacheControl: '31536000',
+            upsert: false
+          }),
+        supabase.storage
+          .from('audio')
+          .upload(previewFileName, fileBuffer, {
+            contentType: getAudioMimeType(file.name),
+            cacheControl: '31536000',
+            upsert: false
+          })
+      ]);
 
-      if (processedError) throw processedError;
+      if (processedUpload.error) throw processedUpload.error;
+      if (previewUpload.error) throw previewUpload.error;
 
-      // Upload the preview file
-      const { data: previewData, error: previewError } = await supabase
-        .storage
-        .from('audio')
-        .upload(previewFileName, file, {
-          contentType,
-          cacheControl: '3600',
-          upsert: false
-        });
+      // Get signed URLs in parallel
+      const [processedUrl, previewUrl] = await Promise.all([
+        supabase.storage
+          .from('audio')
+          .createSignedUrl(processedFileName, 3600),
+        supabase.storage
+          .from('audio')
+          .createSignedUrl(previewFileName, 3600)
+      ]);
 
-      if (previewError) throw previewError;
+      if (!processedUrl.data?.signedUrl || !previewUrl.data?.signedUrl) {
+        throw new Error('Failed to generate signed URLs');
+      }
 
-      // Get public URLs for both files
-      const { data: processedUrl } = await supabase
-        .storage
-        .from('audio')
-        .createSignedUrl(processedFileName, 3600); // 1 hour expiry
+      // Create track record in database and return the ID
+      const { data: trackData, error: dbError } = await supabase
+        .from('tracks')
+        .insert({
+          user_id: user.id,
+          original_file: file.name,
+          processed_file: processedFileName,
+          preview_file: previewFileName,
+          preset: preset,
+          status: 'completed'
+        })
+        .select('id')
+        .single();
 
-      const { data: previewUrl } = await supabase
-        .storage
-        .from('audio')
-        .createSignedUrl(previewFileName, 3600); // 1 hour expiry
+      if (dbError) throw dbError;
+
+      if (!trackData || !trackData.id) {
+        throw new Error('Failed to retrieve track ID after insertion');
+      }
 
       return new Response(
         JSON.stringify({
           message: 'File processed successfully',
-          processed_file: processedFileName,
-          preview_file: previewFileName,
-          processed_url: processedUrl?.signedUrl,
-          preview_url: previewUrl?.signedUrl
+          processed_url: processedUrl.data.signedUrl,
+          preview_url: previewUrl.data.signedUrl,
+          trackId: trackData.id
         }),
         { 
           headers: {
@@ -190,12 +241,13 @@ serve(async (req) => {
     throw new Error('Method not allowed');
   } catch (error) {
     console.error('Error:', error);
+    
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'An unexpected error occurred'
+        error: error instanceof Error ? error.message : 'An unexpected error occurred'
       }),
       { 
-        status: 400,
+        status: error instanceof Error && error.message === 'Unauthorized' ? 401 : 400,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json'

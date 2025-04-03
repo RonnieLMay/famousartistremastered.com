@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import MasterPage from "./MasterPage";
+import { useAuth } from "@/components/ui/AuthSystem";
+import { supabase } from "@/lib/supabase";
 
 interface UploadState {
   selectedFile: File | null;
@@ -15,6 +17,7 @@ interface UploadState {
   processedFile: string | null;
   previewUrl: string | null;
   preset: string;
+  trackId: string | null; // Add trackId to state
 }
 
 interface MasteringPreset {
@@ -42,6 +45,7 @@ const masteringPresets: MasteringPreset[] = [
 ];
 
 const UploadPage: React.FC = () => {
+  const { user } = useAuth();
   const [state, setState] = useState<UploadState>({
     selectedFile: null,
     uploading: false,
@@ -49,7 +53,8 @@ const UploadPage: React.FC = () => {
     message: "",
     processedFile: null,
     previewUrl: null,
-    preset: "studio-warmth"
+    preset: "studio-warmth",
+    trackId: null // Initialize trackId
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,55 +65,77 @@ const UploadPage: React.FC = () => {
         message: "",
         progress: 0,
         processedFile: null,
-        previewUrl: null
+        previewUrl: null,
+        trackId: null // Reset trackId when new file is selected
       }));
     }
   };
 
   const handleUpload = async () => {
+    if (!user) {
+      toast.error("Please sign in to upload tracks");
+      return;
+    }
+
     if (!state.selectedFile) {
       toast.error("Please select a file first");
       return;
     }
 
-    setState(prev => ({ ...prev, uploading: true }));
-    const formData = new FormData();
-    formData.append("file", state.selectedFile);
-    formData.append("preset", state.preset);
+    setState(prev => ({ ...prev, uploading: true, progress: 0 }));
 
     try {
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Authentication required");
+      }
+
+      const formData = new FormData();
+      formData.append("file", state.selectedFile);
+      formData.append("preset", state.preset);
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload`, {
         method: "POST",
         body: formData,
         headers: {
-          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          "Authorization": `Bearer ${session.access_token}`,
         },
       });
 
-      const result = await response.json();
-      if (response.ok) {
-        setState(prev => ({
-          ...prev,
-          message: "File processed successfully!",
-          processedFile: result.processed_url,
-          previewUrl: result.preview_url
-        }));
-        toast.success("Track mastered successfully!");
-      } else {
-        throw new Error(result.error || "Upload failed");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
       }
+
+      const result = await response.json();
+      
+      if (!result.processed_url || !result.preview_url || !result.trackId) {
+        throw new Error("Invalid response from server");
+      }
+
+      setState(prev => ({
+        ...prev,
+        message: "File processed successfully!",
+        processedFile: result.processed_url,
+        previewUrl: result.preview_url,
+        trackId: result.trackId, // Store the track ID
+        progress: 100
+      }));
+
+      toast.success("Track mastered successfully!");
     } catch (error) {
+      console.error("Upload error:", error);
       toast.error(error instanceof Error ? error.message : "Error processing track");
       setState(prev => ({
         ...prev,
-        message: "Error uploading file. Please try again."
+        message: "Error uploading file. Please try again.",
+        progress: 0
       }));
     } finally {
       setState(prev => ({ ...prev, uploading: false }));
     }
   };
-
-  const selectedPreset = masteringPresets.find(preset => preset.value === state.preset);
 
   return (
     <div className="relative min-h-screen bg-[#050816] cyber-grid overflow-hidden flex flex-col justify-center items-center p-6">
@@ -240,11 +267,12 @@ const UploadPage: React.FC = () => {
             )}
           </Button>
 
-          {state.processedFile && (
+          {state.processedFile && state.trackId && (
             <MasterPage
               processedFile={state.processedFile}
               previewUrl={state.previewUrl}
               originalFileName={state.selectedFile?.name || 'track'}
+              trackId={state.trackId}
             />
           )}
         </motion.div>
