@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "npm:stripe@14.21.0";
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+if (!stripeSecretKey) {
+  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+}
+
+const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-03-30',
 });
 
@@ -17,16 +22,23 @@ serve(async (req) => {
   }
 
   try {
-    const { amount } = await req.json();
+    const { amount, purchaseId } = await req.json();
 
     if (!amount || amount <= 0) {
       throw new Error('Invalid amount');
+    }
+
+    if (!purchaseId) {
+      throw new Error('Purchase ID is required');
     }
 
     // Create a PaymentIntent with the specified amount
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount), // amount should already be in cents
       currency: 'usd',
+      metadata: {
+        purchaseId
+      },
       automatic_payment_methods: {
         enabled: true,
       },

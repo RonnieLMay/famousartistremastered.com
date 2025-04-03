@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.8";
+import nodemailer from "npm:nodemailer@6.9.12";
 
-// Define CORS headers with explicit types
+// Define CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,7 +10,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
   'Access-Control-Allow-Credentials': 'true',
   'Vary': 'Origin'
-} as const;
+};
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -21,35 +22,50 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Initialize SMTP transporter
+const smtpHost = Deno.env.get('SMTP_HOST');
+const smtpPort = Deno.env.get('SMTP_PORT');
+const smtpUsername = Deno.env.get('SMTP_USERNAME');
+const smtpPassword = Deno.env.get('SMTP_PASSWORD');
+
+if (!smtpHost || !smtpPort || !smtpUsername || !smtpPassword) {
+  throw new Error('Missing SMTP environment variables');
+}
+
+const transporter = nodemailer.createTransport({
+  host: smtpHost,
+  port: parseInt(smtpPort),
+  secure: true,
+  auth: {
+    user: smtpUsername,
+    pass: smtpPassword,
+  },
+});
+
 // Helper function to create a response with CORS headers
 const createResponse = (body: unknown, status = 200) => {
-  const origin = '*';
   return new Response(
     JSON.stringify(body),
     { 
       status, 
       headers: {
         ...corsHeaders,
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin
+        'Content-Type': 'application/json'
       }
     }
   );
 };
 
 serve(async (req) => {
-  try {
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          ...corsHeaders,
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    }
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders
+    });
+  }
 
+  try {
     // Verify request method
     if (req.method !== 'POST') {
       return createResponse(
@@ -68,48 +84,25 @@ serve(async (req) => {
     }
 
     // Parse request body
-    let body;
-    try {
-      body = await req.json();
-    } catch (e) {
+    const { userId, trackId } = await req.json();
+
+    if (!userId || !trackId) {
       return createResponse(
-        { error: 'Invalid JSON in request body' },
+        { error: 'Missing required parameters: userId and trackId are required' },
         400
       );
     }
 
-    const { purchaseId, userId } = body;
-
-    if (!purchaseId || !userId) {
-      return createResponse(
-        { error: 'Missing required parameters: purchaseId and userId are required' },
-        400
-      );
-    }
-
-    // Get purchase details with track information
-    const { data: purchase, error: purchaseError } = await supabase
-      .from('purchases')
-      .select(`
-        *,
-        tracks (
-          id,
-          processed_file
-        )
-      `)
-      .eq('id', purchaseId)
+    // Get track details
+    const { data: track, error: trackError } = await supabase
+      .from('tracks')
+      .select('processed_file')
+      .eq('id', trackId)
       .single();
 
-    if (purchaseError) {
+    if (trackError || !track) {
       return createResponse(
-        { error: `Failed to fetch purchase: ${purchaseError.message}` },
-        404
-      );
-    }
-
-    if (!purchase) {
-      return createResponse(
-        { error: 'Purchase not found' },
+        { error: 'Track not found' },
         404
       );
     }
@@ -132,7 +125,7 @@ serve(async (req) => {
     const { data: downloadUrl, error: urlError } = await supabase
       .storage
       .from('audio')
-      .createSignedUrl(purchase.tracks.processed_file, 604800); // 7 days
+      .createSignedUrl(track.processed_file, 604800); // 7 days
 
     if (urlError || !downloadUrl?.signedUrl) {
       return createResponse(
@@ -141,11 +134,48 @@ serve(async (req) => {
       );
     }
 
+    // Send email notification
+    try {
+      await transporter.sendMail({
+        from: 'noreply@far.com',
+        to: profile.email,
+        subject: 'Your Mastered Track is Ready!',
+        html: `
+          <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <h1 style="color: #2563eb;">Your Mastered Track is Ready!</h1>
+              <p>Thank you for using Famous Artist Remastered!</p>
+              <p>Your mastered track is ready for download. Click the link below:</p>
+              <p>
+                <a 
+                  href="${downloadUrl.signedUrl}" 
+                  style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px;"
+                >
+                  Download Mastered Track
+                </a>
+              </p>
+              <p><strong>Note:</strong> This download link will expire in 7 days.</p>
+              <p>Enjoy your professionally mastered track!</p>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+              <p style="font-size: 12px; color: #6b7280;">
+                If you didn't request this download, please ignore this email.
+              </p>
+            </body>
+          </html>
+        `
+      });
+    } catch (emailError) {
+      console.error('Failed to send email:', emailError);
+      // Continue execution - email failure shouldn't block the download
+    }
+
     // Update purchase status
     const { error: updateError } = await supabase
       .from('purchases')
       .update({ status: 'completed' })
-      .eq('id', purchaseId);
+      .eq('user_id', userId)
+      .eq('track_id', trackId)
+      .eq('status', 'pending');
 
     if (updateError) {
       return createResponse(
@@ -154,7 +184,7 @@ serve(async (req) => {
       );
     }
 
-    // Return success response with CORS headers
+    // Return success response
     return createResponse({
       success: true,
       downloadUrl: downloadUrl.signedUrl
