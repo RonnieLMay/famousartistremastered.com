@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import SignIn from './SignIn';
 
 interface AuthContextType {
@@ -10,7 +10,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  signOut: async () => {}
+  signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -43,7 +43,6 @@ const AuthSystem: React.FC<AuthSystemProps> = ({ children }) => {
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
-      setUser(null);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -55,6 +54,10 @@ const AuthSystem: React.FC<AuthSystemProps> = ({ children }) => {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
     );
+  }
+
+  if (!user) {
+    return <SignIn />;
   }
 
   return (

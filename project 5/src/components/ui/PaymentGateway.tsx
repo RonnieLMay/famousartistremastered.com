@@ -1,67 +1,86 @@
-import React from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
+import { Button } from './button';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
 
 interface PaymentGatewayProps {
   amount: number;
-  onSuccess: (paymentId: string) => void;
-  onError: (error: Error) => void;
+  onSuccess?: () => void;
+  onError?: (error: Error) => void;
 }
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
 const PaymentGateway: React.FC<PaymentGatewayProps> = ({
   amount,
   onSuccess,
   onError
 }) => {
-  const [isProcessing, setIsProcessing] = React.useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handlePayment = async () => {
-    setIsProcessing(true);
-
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('Authentication required');
+      setLoading(true);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            amount: amount * 100, // Convert to cents
+            success_url: `${window.location.origin}/success`,
+            cancel_url: `${window.location.origin}/cancel`,
+          }),
+        }
+      );
+
+      const { sessionId, error } = await response.json();
+
+      if (error) {
+        throw new Error(error);
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ amount })
+      const stripe = await stripePromise;
+      if (!stripe) {
+        throw new Error('Stripe failed to initialize');
+      }
+
+      const { error: stripeError } = await stripe.redirectToCheckout({
+        sessionId,
       });
 
-      const { clientSecret, error } = await response.json();
-      if (error) throw new Error(error);
+      if (stripeError) {
+        throw stripeError;
+      }
 
-      const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
-      if (!stripe) throw new Error('Failed to load Stripe');
-
-      const { error: confirmError } = await stripe.confirmCardPayment(clientSecret);
-      if (confirmError) throw confirmError;
-
-      onSuccess(clientSecret);
-      toast.success('Payment successful!');
+      onSuccess?.();
     } catch (error) {
-      const err = error instanceof Error ? error : new Error('Payment failed');
-      onError(err);
-      toast.error(err.message);
+      const errorMessage = error instanceof Error ? error.message : 'Payment failed';
+      toast.error(errorMessage);
+      onError?.(error instanceof Error ? error : new Error(errorMessage));
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
   return (
     <Button
       onClick={handlePayment}
-      disabled={isProcessing}
+      disabled={loading}
       className="w-full"
     >
-      {isProcessing ? 'Processing...' : `Pay $${(amount / 100).toFixed(2)}`}
+      {loading ? (
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+          Processing...
+        </div>
+      ) : (
+        'Pay Now'
+      )}
     </Button>
   );
 };
