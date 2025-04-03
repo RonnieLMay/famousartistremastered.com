@@ -17,6 +17,7 @@ interface UploadState {
   processedFile: string | null;
   previewUrl: string | null;
   preset: string;
+  trackId: string | null; // Add trackId to state
 }
 
 interface MasteringPreset {
@@ -52,7 +53,8 @@ const UploadPage: React.FC = () => {
     message: "",
     processedFile: null,
     previewUrl: null,
-    preset: "studio-warmth"
+    preset: "studio-warmth",
+    trackId: null // Initialize trackId
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,7 +65,8 @@ const UploadPage: React.FC = () => {
         message: "",
         progress: 0,
         processedFile: null,
-        previewUrl: null
+        previewUrl: null,
+        trackId: null // Reset trackId when new file is selected
       }));
     }
   };
@@ -107,7 +110,7 @@ const UploadPage: React.FC = () => {
 
       const result = await response.json();
       
-      if (!result.processed_url || !result.preview_url) {
+      if (!result.processed_url || !result.preview_url || !result.trackId) {
         throw new Error("Invalid response from server");
       }
 
@@ -116,6 +119,7 @@ const UploadPage: React.FC = () => {
         message: "File processed successfully!",
         processedFile: result.processed_url,
         previewUrl: result.preview_url,
+        trackId: result.trackId, // Store the track ID
         progress: 100
       }));
 
@@ -263,11 +267,12 @@ const UploadPage: React.FC = () => {
             )}
           </Button>
 
-          {state.processedFile && (
+          {state.processedFile && state.trackId && (
             <MasterPage
               processedFile={state.processedFile}
               previewUrl={state.previewUrl}
               originalFileName={state.selectedFile?.name || 'track'}
+              trackId={state.trackId}
             />
           )}
         </motion.div>

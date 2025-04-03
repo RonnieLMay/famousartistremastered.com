@@ -202,8 +202,8 @@ serve(async (req) => {
         throw new Error('Failed to generate signed URLs');
       }
 
-      // Create track record in database
-      const { error: dbError } = await supabase
+      // Create track record in database and return the ID
+      const { data: trackData, error: dbError } = await supabase
         .from('tracks')
         .insert({
           user_id: user.id,
@@ -212,15 +212,22 @@ serve(async (req) => {
           preview_file: previewFileName,
           preset: preset,
           status: 'completed'
-        });
+        })
+        .select('id')
+        .single();
 
       if (dbError) throw dbError;
+
+      if (!trackData || !trackData.id) {
+        throw new Error('Failed to retrieve track ID after insertion');
+      }
 
       return new Response(
         JSON.stringify({
           message: 'File processed successfully',
           processed_url: processedUrl.data.signedUrl,
-          preview_url: previewUrl.data.signedUrl
+          preview_url: previewUrl.data.signedUrl,
+          trackId: trackData.id
         }),
         { 
           headers: {
