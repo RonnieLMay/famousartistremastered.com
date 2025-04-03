@@ -17,6 +17,7 @@ interface UploadState {
   processedFile: string | null;
   previewUrl: string | null;
   preset: string;
+  trackId: string | null; // Add trackId to state
 }
 
 interface MasteringPreset {
@@ -52,19 +53,20 @@ const UploadPage: React.FC = () => {
     message: "",
     processedFile: null,
     previewUrl: null,
-    preset: "studio-warmth"
+    preset: "studio-warmth",
+    trackId: null // Initialize trackId
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    if (event.target.files && event.target.files[0]) {
       setState(prev => ({
         ...prev,
-        selectedFile: file,
+        selectedFile: event.target.files![0],
         message: "",
         progress: 0,
         processedFile: null,
-        previewUrl: null
+        previewUrl: null,
+        trackId: null // Reset trackId when new file is selected
       }));
     }
   };
@@ -83,6 +85,7 @@ const UploadPage: React.FC = () => {
     setState(prev => ({ ...prev, uploading: true, progress: 0 }));
 
     try {
+      // Get the current session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error("Authentication required");
@@ -107,7 +110,7 @@ const UploadPage: React.FC = () => {
 
       const result = await response.json();
       
-      if (!result.processed_url || !result.preview_url) {
+      if (!result.processed_url || !result.preview_url || !result.trackId) {
         throw new Error("Invalid response from server");
       }
 
@@ -116,6 +119,7 @@ const UploadPage: React.FC = () => {
         message: "File processed successfully!",
         processedFile: result.processed_url,
         previewUrl: result.preview_url,
+        trackId: result.trackId, // Store the track ID
         progress: 100
       }));
 
@@ -135,6 +139,7 @@ const UploadPage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen bg-[#050816] cyber-grid overflow-hidden flex flex-col justify-center items-center p-6">
+      {/* Background animations */}
       <div className="absolute inset-0 w-full h-full">
         <motion.div
           className="absolute w-[600px] h-[600px] rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 blur-3xl"
@@ -262,11 +267,12 @@ const UploadPage: React.FC = () => {
             )}
           </Button>
 
-          {state.processedFile && (
+          {state.processedFile && state.trackId && (
             <MasterPage
               processedFile={state.processedFile}
               previewUrl={state.previewUrl}
               originalFileName={state.selectedFile?.name || 'track'}
+              trackId={state.trackId}
             />
           )}
         </motion.div>

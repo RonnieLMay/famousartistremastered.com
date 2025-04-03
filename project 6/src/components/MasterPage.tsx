@@ -10,12 +10,12 @@ import SocialShare from "@/components/ui/SocialShare";
 import Waveform from "@/components/ui/Waveform";
 import { useAuth } from "@/components/ui/AuthSystem";
 import { supabase } from "@/lib/supabase";
-import { loadStripe } from "@stripe/stripe-js";
 
 interface MasterPageProps {
   processedFile: string | null;
   previewUrl: string | null;
   originalFileName: string;
+  trackId: string;
 }
 
 const waveformTypes = [
@@ -27,7 +27,7 @@ const waveformTypes = [
 
 type WaveformType = typeof waveformTypes[number]["value"];
 
-const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, originalFileName }) => {
+const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, originalFileName, trackId }) => {
   const { user } = useAuth();
   const [waveformType, setWaveformType] = useState<WaveformType>("classic");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -41,11 +41,6 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
       return;
     }
 
-    if (!processedFile) {
-      toast.error("No processed file available");
-      return;
-    }
-
     setIsProcessing(true);
 
     try {
@@ -54,7 +49,7 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
         .from('purchases')
         .insert({
           user_id: user.id,
-          track_id: processedFile,
+          track_id: trackId,
           amount: 199, // $1.99 in cents
           status: 'pending'
         })
@@ -63,55 +58,64 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
 
       if (purchaseError) throw purchaseError;
 
-      // Create Stripe Checkout session
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`, {
+      // Create payment intent
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
         },
         body: JSON.stringify({
-          amount: 199,
-          success_url: `${window.location.origin}/success?purchase_id=${purchase.id}`,
-          cancel_url: window.location.href
+          amount: 199, // $1.99 in cents
+          purchaseId: purchase.id
         })
       });
 
-      const { sessionId, error } = await response.json();
-      if (error) throw new Error(error);
+      if (!response.ok) {
+        throw new Error('Failed to create payment intent');
+      }
+
+      const { clientSecret } = await response.json();
 
       // Load Stripe
-      const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
-      if (!stripe) throw new Error('Failed to load Stripe');
+      const { loadStripe } = await import('@stripe/stripe-js');
+      const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
-      // Redirect to Checkout
-      const { error: stripeError } = await stripe.redirectToCheckout({ sessionId });
-      if (stripeError) throw stripeError;
+      if (!stripe) {
+        throw new Error('Failed to load Stripe');
+      }
 
-    } catch (error) {
-      console.error('Purchase error:', error);
-      toast.error('Failed to process purchase. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+      // Confirm the payment
+      const { error: stripeError } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: {
+            token: 'tok_visa' // Test token, replace with real card element in production
+          }
+        }
+      });
 
-  const handlePaymentSuccess = async (purchaseId: string) => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/handle-payment-success`, {
+      if (stripeError) {
+        throw stripeError;
+      }
+
+      // Handle successful payment
+      const successResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/handle-payment-success`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
         },
         body: JSON.stringify({
-          purchaseId,
-          userId: user?.id
+          userId: user.id,
+          trackId: trackId
         })
       });
 
-      const { downloadUrl, error } = await response.json();
-      if (error) throw new Error(error);
+      if (!successResponse.ok) {
+        throw new Error('Failed to process payment success');
+      }
+
+      const { downloadUrl } = await successResponse.json();
 
       // Trigger download
       const link = document.createElement('a');
@@ -121,23 +125,15 @@ const MasterPage: React.FC<MasterPageProps> = ({ processedFile, previewUrl, orig
       link.click();
       document.body.removeChild(link);
 
-      toast.success('Your mastered track is ready for download!');
+      toast.success('Your mastered track has been sent to your email!');
+
     } catch (error) {
-      console.error('Payment success handling error:', error);
-      toast.error('Failed to process download. Please contact support.');
+      console.error('Purchase error:', error);
+      toast.error('Failed to process purchase. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
-
-  // Check for successful payment return from Stripe
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    const purchaseId = url.searchParams.get('purchase_id');
-    if (purchaseId) {
-      handlePaymentSuccess(purchaseId);
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
 
   return (
     <motion.div
